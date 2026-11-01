@@ -53,6 +53,9 @@ pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
     ui.add_space(6.0);
     sezione_notebook(ui, stato);
 
+    ui.add_space(6.0);
+    crate::ui_scheda::sezione_scheda_esame(ui, stato);
+
     ui.add_space(12.0);
     sezione_testi(ui, stato);
 }
@@ -70,7 +73,6 @@ fn sezione_notebook(ui: &mut egui::Ui, stato: &mut StatoApp) {
         return;
     };
 
-    // Il campo lavora su una copia: si salva solo se il link e' valido.
     let salvato = stato
         .config
         .notebook_esami

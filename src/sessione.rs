@@ -17,6 +17,9 @@ pub const INTERVALLO_RICHIAMO: Duration = Duration::from_secs(15 * 60);
 /// Durata massima consentita per una sessione (in minuti).
 pub const DURATA_MAXIMA: u32 = 180;
 
+/// Durata di una pausa breve.
+pub const DURATA_PAUSA: Duration = Duration::from_secs(5 * 60);
+
 /// Dati della sessione di studio in corso.
 #[derive(Clone)]
 pub struct Sessione {
@@ -110,7 +113,20 @@ impl StatoApp {
 
     /// Termina la sessione, ferma il Livello 2 e ripristina il file hosts.
     pub fn termina_sessione(&mut self) {
-        self.sessione = None;
+        // Prima di buttare la sessione, la si annota nello storico.
+        if let Some(s) = self.sessione.take() {
+            let minuti = (s.trascorso().as_secs() / 60) as u32;
+            if minuti >= 1 {
+                crate::storico::registra(crate::storico::SessioneRegistrata {
+                    data: crate::storico::adesso(),
+                    esame: self.nome_esame(),
+                    minuti,
+                    xp: self.xp.punti,
+                    distrazioni: self.xp.distrazioni,
+                    blocchi: self.task.completati,
+                });
+            }
+        }
         if let Some(mut guardia) = self.guardia.take() {
             guardia.ferma();
         }
@@ -118,8 +134,54 @@ impl StatoApp {
         crate::blocker::flush_dns();
     }
 
+    /// Mette la sessione in pausa per una durata fissa.
+    ///
+    /// La pausa pianificata e' diversa dallo sblocco d'emergenza: serve a
+    /// fermarsi cinque minuti senza abbandonare, ed e' quello che tiene in
+    /// piedi una sessione lunga.
+    pub fn metti_in_pausa(&mut self) {
+        if let Some(s) = self.sessione.as_mut() {
+            s.metti_in_pausa();
+            self.pausa_scade = Some(Instant::now() + DURATA_PAUSA);
+        }
+    }
+
+    /// Toglie la pausa e riprende il conteggio.
+    pub fn riprendi_sessione(&mut self) {
+        self.pausa_scade = None;
+        if let Some(s) = self.sessione.as_mut() {
+            s.riprendi();
+        }
+    }
+
+    /// Secondi che mancano alla fine della pausa, se c'e' una pausa attiva.
+    pub fn pausa_residua(&self) -> Option<u64> {
+        let scadenza = self.pausa_scade?;
+        Some(
+            scadenza
+                .saturating_duration_since(Instant::now())
+                .as_secs(),
+        )
+    }
+
+    /// Chiude la pausa quando il tempo e' scaduto.
+    fn controlla_pausa(&mut self, audio: &mut MotoreAudio) {
+        let Some(scadenza) = self.pausa_scade else {
+            return;
+        };
+        if Instant::now() < scadenza {
+            return;
+        }
+        self.riprendi_sessione();
+        audio.beep();
+        audio.parla("Pausa finita. Si riparte.");
+        self.aggiungi_notifica("Pausa finita: si riparte.");
+    }
+
     /// Fa avanzare la sessione: richiami vocali e chiusura a tempo scaduto.
     pub fn aggiorna_sessione(&mut self, audio: &mut MotoreAudio) {
+        self.controlla_pausa(audio);
+
         let (scaduta, richiamo) = match &self.sessione {
             Some(s) => {
                 let scaduta = s.scaduta();

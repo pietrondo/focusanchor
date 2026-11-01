@@ -26,6 +26,9 @@ impl PuntiXp {
     /// Aggiunge (o sottrae) punti XP.
     pub fn aggiungi(&mut self, punti: i32) {
         self.punti += punti;
+        if self.punti < 0 {
+            self.punti = 0;
+        }
     }
 
     /// Registra una distrazione sventata e toglie i punti XP.

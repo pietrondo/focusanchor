@@ -36,6 +36,10 @@ pub struct StatoApp {
     pub anti_sonno: AntiSonno,
     /// Micro-task di studio in corso.
     pub task: crate::task::GestoreTask,
+    /// Assistente AI per spiegare i passaggi ostici.
+    pub ai: crate::ai::Assistente,
+    /// Sessioni concluse, lette da disco una volta sola.
+    pub storico: Vec<crate::storico::SessioneRegistrata>,
     /// Collezioni Zotero, cioe' gli esami disponibili.
     pub collezioni: Vec<Collezione>,
     /// Esame scelto (identificativo della collezione).
@@ -46,6 +50,10 @@ pub struct StatoApp {
     pub testi_scelti: Vec<String>,
     /// Rotazione fra i testi scelti.
     pub interleaving: Interleaving,
+    /// Momento in cui finisce la pausa in corso.
+    ///
+    /// Lo gestisce `sessione.rs`: qui serve solo come stato condiviso.
+    pub pausa_scade: Option<Instant>,
     /// Sottolineature recenti lette da Zotero.
     pub evidenziazioni: Vec<Evidenziazione>,
     /// Percorso dello snapshot del database Zotero.
@@ -80,18 +88,25 @@ impl StatoApp {
         let testo_domini = lista_alle_righe(&config.domini_vietati);
         let testo_parole = lista_alle_righe(&config.parole_vietate);
         let sfide = config.sfide_a_sorpresa;
+        let xp = PuntiXp {
+            punti: config.xp_punti,
+            distrazioni: config.xp_distrazioni,
+        };
         Self {
             config,
             sessione: None,
             guardia: None,
-            xp: PuntiXp::default(),
+            xp,
             anti_sonno: AntiSonno::nuovo(sfide),
             task: crate::task::GestoreTask::nuovo(),
+            ai: crate::ai::Assistente::nuovo(),
+            storico: crate::storico::carica(),
             collezioni: Vec::new(),
             esame_scelto: None,
             documenti_esame: Vec::new(),
             testi_scelti: Vec::new(),
             interleaving: Interleaving::nuovo(Vec::new()),
+            pausa_scade: None,
             evidenziazioni: Vec::new(),
             snapshot_zotero: None,
             campo_notebook: String::new(),
@@ -201,7 +216,23 @@ impl StatoApp {
     pub fn salva_configurazione(&mut self) {
         self.config.domini_vietati = righe_alla_lista(&self.testo_domini);
         self.config.parole_vietate = righe_alla_lista(&self.testo_parole);
+        // Gli XP fanno parte della configurazione: senza questo si azzerano
+        // a ogni riavvio e la gamification perde senso.
+        self.config.xp_punti = self.xp.punti;
+        self.config.xp_distrazioni = self.xp.distrazioni;
         salva_configurazione(&self.config);
+    }
+
+    /// Aggiunge XP e li salva subito, cosi' un crash non li perde.
+    pub fn aggiungi_xp(&mut self, punti: i32) {
+        self.xp.aggiungi(punti);
+        self.salva_configurazione();
+    }
+
+    /// Registra una distrazione e salva subito.
+    pub fn registra_distrazione(&mut self) {
+        self.xp.registra_distrazione();
+        self.salva_configurazione();
     }
 
     /// Allinea la voce del motore audio con l'interruttore in configurazione.

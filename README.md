@@ -30,11 +30,40 @@ Scegli 2 o 3 testi dello stesso esame: la sessione ruota fra loro ogni
 10-12 minuti, mette in pausa il countdown e ti annuncia il testo successivo.
 Alternare i testi tiene alta l'attenzione più di leggere lo stesso libro per ore.
 
-**Gamification**
+**Gamification che non si azzera**
 
 Punti XP, gradi (*Iniziato*, *Studioso*, *Centurione del Focus*) e micro-task
-da 1, 2, 3, 5 o 10 minuti con premio immediato. Ogni distrazione sventata
-costa 25 XP.
+da 1, 2, 3, 5 o 10 minuti con premio immediato. Gli XP si salvano su disco:
+riapri l'app e ritrovi il tuo grado. Ogni distrazione sventata costa 25 XP.
+
+**Pausa vera**
+
+Un pulsante **Pausa 5 minuti** ferma il timer senza penalità e riprende da
+solo. È diverso dallo sblocco d'emergenza, che serve per abbandonare.
+
+**Storico**
+
+Ogni sessione conclusa lascia una riga in `storico.json`: quanto hai studiato,
+su quale esame, quanti XP. Il riquadro *Storico* mostra il tempo per esame,
+così vedi dove sei indietro.
+
+**Scheda di ogni esame**
+
+Per ogni esame puoi salvare la pagina del corso, i crediti, la modalità
+(scritto/orale), se è da non frequentante e la data dell'appello. La data
+diventa un conto alla rovescia mostrato durante lo studio.
+
+**Ripasso dilazionato**
+
+Ogni risposta alle domande a tradimento diventa una carta in
+`anki_<esame>.txt`, in formato tabulato che Anki importa direttamente.
+
+**Assistente AI**
+
+Il pulsante **Spiegami questo passaggio** manda il testo copiato a OpenCode
+(modello `opencode-go/deepseek-v4.1-flash`, configurabile) e mostra la
+spiegazione nell'overlay. Usa l'autenticazione che hai già: nessuna chiave
+nel programma e nessuna dipendenza HTTP aggiuntiva.
 
 **Integrazione Zotero**
 

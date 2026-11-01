@@ -25,6 +25,7 @@ pub fn disegna(ctx: &egui::Context, stato: &mut StatoApp, audio: &mut MotoreAudi
             intestazione(ui, stato);
             ui.add_space(2.0);
             countdown(ui, stato);
+            pannello_pausa(ui, stato);
             ui.add_space(6.0);
 
             // La larghezza si ricava dalla finestra vera: `available_width`
@@ -42,6 +43,8 @@ pub fn disegna(ctx: &egui::Context, stato: &mut StatoApp, audio: &mut MotoreAudi
 
                     crate::ui_azioni::disegna(ui, stato, audio, larghezza);
                     ui.add_space(4.0);
+
+                    crate::ui_ai::mostra_risposta(ui, stato);
 
                     pannello_task(ui, stato, audio);
                     ui.add_space(4.0);
@@ -72,6 +75,15 @@ fn intestazione(ui: &mut egui::Ui, stato: &StatoApp) {
             badge(ui, &format!("⛔ {}", stato.xp.distrazioni), GIALLO);
         }
     });
+    // Quanto manca all'appello piu' vicino: cambia il peso di ogni sessione.
+    if let Some((esame, giorni)) = crate::ui_storico::prossimo_esame(stato) {
+        let testo = if giorni == 0 {
+            format!("📅 {esame}: oggi")
+        } else {
+            format!("📅 {esame}: {} giorni", giorni)
+        };
+        ui.label(egui::RichText::new(testo).size(13.0).color(ARANCIO));
+    }
 }
 
 /// Countdown in grande e barra di avanzamento.
@@ -96,6 +108,46 @@ fn countdown(ui: &mut egui::Ui, stato: &StatoApp) {
             .fill(ACCENTO)
             .show_percentage(),
     );
+}
+
+/// Pulsante pausa e conto alla rovescia della pausa.
+///
+/// Una pausa pianificata e' ciò che tiene in piedi una sessione lunga: senza,
+/// l'unico modo per fermarsi sarebbe lo sblocco d'emergenza.
+fn pannello_pausa(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    match stato.pausa_residua() {
+        Some(secondi) => {
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "☕ Pausa: {:02}:{:02}",
+                        secondi / 60,
+                        secondi % 60
+                    ))
+                    .size(15.0)
+                    .color(ARANCIO),
+                );
+                if ui.button("▶ Riprendi").clicked() {
+                    stato.riprendi_sessione();
+                    stato.aggiungi_notifica("Si riparte.");
+                }
+            });
+        }
+        None => {
+            let larghezza = crate::ui::larghezza(ui);
+            if ui
+                .add(
+                    egui::Button::new("☕ Pausa 5 minuti")
+                        .min_size(egui::vec2(larghezza, 26.0)),
+                )
+                .on_hover_text("Ferma il timer: nessuna penalità, si riprende da soli")
+                .clicked()
+            {
+                stato.metti_in_pausa();
+                stato.aggiungi_notifica("Pausa di 5 minuti. Il timer è fermo.");
+            }
+        }
+    }
 }
 
 /// Riga dell'alternanza: testo corrente e tempo al cambio.
@@ -167,7 +219,7 @@ fn pannello_task(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut MotoreAudi
 
     if stato.task.e_completato() {
         let premio = stato.task.completa().unwrap_or(0);
-        stato.xp.aggiungi(premio);
+        stato.aggiungi_xp(premio);
         // Solo un beep: un annuncio vocale a ogni blocco diventa rumore.
         audio.beep();
         stato.aggiungi_notifica(&format!("+{premio} XP! Blocco completato."));

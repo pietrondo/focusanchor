@@ -90,7 +90,7 @@ fn disegna_missione(
         )
         .clicked()
     {
-        stato.xp.aggiungi(XP_MISSIONE);
+        stato.aggiungi_xp(XP_MISSIONE);
         stato.anti_sonno.completa_sfida();
         audio.parla(&format!(
             "Bene. Hai guadagnato {XP_MISSIONE} punti. Ora torna al testo."
@@ -177,10 +177,15 @@ fn disegna_domanda(
 /// Salva la risposta e assegna i punti XP.
 fn completa_domanda(stato: &mut StatoApp, audio: &mut MotoreAudio) {
     let risposta = stato.anti_sonno.risposta.clone();
-    let materia = stato.obiettivo_corrente().to_string();
-    match archivi::salva_riassunto(&materia, &risposta) {
+    let materia = stato.nome_esame();
+    // Il passaggio da cui e' nata la domanda diventa la "fronte" della carta.
+    let passaggio = match &stato.anti_sonno.sfida {
+        Sfida::Domanda { passaggio, .. } => passaggio.clone(),
+        _ => String::new(),
+    };
+    match archivi::salva_riassunto(&materia, &passaggio, &risposta) {
         Ok(()) => {
-            stato.xp.aggiungi(XP_DOMANDA);
+            stato.aggiungi_xp(XP_DOMANDA);
             stato.anti_sonno.completa_sfida();
             audio.parla(&format!(
                 "Ottimo. Hai guadagnato {XP_DOMANDA} punti. Continua cosi."

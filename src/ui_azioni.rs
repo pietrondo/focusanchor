@@ -33,6 +33,19 @@ pub fn disegna(
         spiega_con_notebooklm(stato);
     }
 
+    let etichetta_ai = if stato.ai.in_corso {
+        "🤖 Sto pensando…"
+    } else {
+        "🤖 Spiegami questo passaggio"
+    };
+    if ui
+        .add(egui::Button::new(etichetta_ai).min_size(misura))
+        .on_hover_text("Chiede al modello di spiegare il testo copiato, nel contesto dell'esame")
+        .clicked()
+    {
+        chiedi_all_ai(stato);
+    }
+
     if ui
         .add(egui::Button::new("⚡ S.O.S. Sonnolenza").min_size(misura))
         .on_hover_text("Reset di 60 secondi: ti alzi e ti muovi")
@@ -129,4 +142,27 @@ fn spiega_con_notebooklm(stato: &mut StatoApp) {
         }
         Err(e) => stato.avviso = Some(e),
     }
+}
+
+/// Chiede all'assistente AI di spiegare il passaggio copiato.
+///
+/// Riusa lo stesso testo che l'utente copia per NotebookLM: cambia solo il
+/// destinatario. La risposta arriva in un thread e compare nell'overlay.
+fn chiedi_all_ai(stato: &mut StatoApp) {
+    let passaggio = match MotoreAudio::leggi_clipboard() {
+        Ok(t) if !t.trim().is_empty() => t,
+        Ok(_) => {
+            stato.avviso = Some(
+                "Copia prima il passaggio da spiegare (Ctrl+C), poi premi di nuovo.".into(),
+            );
+            return;
+        }
+        Err(e) => {
+            stato.avviso = Some(format!("Appunti non leggibili: {e}"));
+            return;
+        }
+    };
+    let esame = stato.nome_esame();
+    let modello = stato.config.modello_ai.clone();
+    stato.ai.chiedi(&modello, &esame, &passaggio);
 }

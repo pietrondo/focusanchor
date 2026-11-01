@@ -3,6 +3,7 @@
 //! Entry point: pulizia dei residui del file `hosts`, panic hook di sicurezza,
 //! avvio della finestra `eframe`.
 
+mod ai;
 mod anti_sleep;
 mod archivi;
 mod audio;
@@ -15,22 +16,29 @@ mod interleaving;
 mod notebooklm;
 mod sessione;
 mod state;
+mod storico;
 mod suono;
 mod task;
 mod tts;
 mod ui;
+mod ui_ai;
 mod ui_archivi;
 mod ui_audio;
 mod ui_azioni;
 mod ui_esami;
 mod ui_focus;
 mod ui_sblocco;
+mod ui_scheda;
 mod ui_setup;
+mod ui_storico;
 mod ui_sfida;
 mod ui_zotero;
 mod xp;
 mod zotero;
 mod zotero_query;
+
+#[cfg(test)]
+mod test_interfaccia;
 
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -98,7 +106,7 @@ impl AppFocus {
     /// La distrazione costa anche dei punti XP: il rinforzo negativo e' il
     /// segnale che la distrazione ha un costo, non solo una nota.
     fn annuncia_distrazione(&mut self, titolo: &str) {
-        self.stato.xp.registra_distrazione();
+        self.stato.registra_distrazione();
         let obiettivo = self.stato.obiettivo_corrente().to_string();
         let frase = format!(
             "Fermo! Stai studiando {obiettivo}. Chiudi le distrazioni e torna su Zotero!"
@@ -193,6 +201,7 @@ impl eframe::App for AppFocus {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.gestisci_segnali();
         self.stato.sincronizza_voce(&mut self.audio);
+        self.stato.ai.aggiorna();
         self.stato.aggiorna_sessione(&mut self.audio);
         self.stato.aggiorna_interleaving(&mut self.audio);
         self.stato.aggiorna_voce(&mut self.audio);

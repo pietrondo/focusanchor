@@ -24,6 +24,20 @@ pub fn percorso_riassunti() -> PathBuf {
     cartella_dati().join("riassunto_studio.md")
 }
 
+/// Nome file senza caratteri vietati dal file system.
+pub fn nome_file_sicuro(esame: &str) -> String {
+    let pulito: String = esame
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '_' })
+        .collect();
+    let pulito = pulito.trim_matches('_').to_string();
+    if pulito.is_empty() {
+        "Senza_esame".to_string()
+    } else {
+        pulito
+    }
+}
+
 /// Nome file del pacchetto NotebookLM per un esame specifico.
 ///
 /// Il nome dell'esame finisce nel file: cosi' l'utente ha un file per corso e
@@ -75,26 +89,70 @@ pub fn svuota_parcheggio() -> Result<(), String> {
 
 /// Salva una risposta alle domande a tradimento.
 ///
-/// Viene annotata la materia (l'obiettivo della sessione) per ritrovarla
-/// facilmente, e il file e' gia' in formato Markdown pronto per la revisione.
-pub fn salva_riassunto(materia: &str, risposta: &str) -> Result<(), String> {
+/// Viene annotata la materia (l'esame) per ritrovarla facilmente, e il file
+/// e' gia' in formato Markdown pronto per la revisione. La stessa coppia
+/// domanda/risposta finisce anche nel file per Anki: cosi' il ripasso
+/// dilazionato e' pronto senza copiare niente a mano.
+pub fn salva_riassunto(materia: &str, passaggio: &str, risposta: &str) -> Result<(), String> {
     let risposta = risposta.trim();
     if risposta.is_empty() {
         return Ok(());
     }
     let timestamp = Local::now().format("%Y-%m-%d %H:%M");
-    let materia = if materia.trim().is_empty() {
-        "Senza materia"
+    let materia = nome_esame(materia);
+
+    let blocco = if passaggio.trim().is_empty() {
+        format!("\n## {materia}\n\n*{timestamp}*\n\n{risposta}\n")
     } else {
-        materia.trim()
+        format!(
+            "\n## {materia}\n\n*{timestamp}*\n\n**Passaggio:** {}\n\n**Risposta:** {risposta}\n",
+            passaggio.trim()
+        )
     };
-    let blocco = format!("\n## {materia}\n\n*{timestamp}*\n\n{risposta}\n");
     let esito = OpenOptions::new()
         .create(true)
         .append(true)
         .open(percorso_riassunti())
         .and_then(|mut f| f.write_all(blocco.as_bytes()));
-    esito.map_err(|e| format!("Non riesco a scrivere il riassunto: {e}"))
+    esito.map_err(|e| format!("Non riesco a scrivere il riassunto: {e}"))?;
+
+    // La carta per Anki si scrive solo se c'e' una domanda.
+    if !passaggio.trim().is_empty() {
+        salva_carta_anki(&materia, passaggio, risposta)?;
+    }
+    Ok(())
+}
+
+/// Nome dell'esame, o un segnaposto se manca.
+fn nome_esame(materia: &str) -> &str {
+    if materia.trim().is_empty() {
+        "Senza materia"
+    } else {
+        materia.trim()
+    }
+}
+
+/// Percorso del file di carte per Anki di un esame.
+pub fn percorso_anki(esame: &str) -> PathBuf {
+    cartella_dati().join(format!("anki_{}.txt", nome_file_sicuro(esame)))
+}
+
+/// Aggiunge una carta in formato tabulato, che Anki importa direttamente.
+fn salva_carta_anki(materia: &str, domanda: &str, risposta: &str) -> Result<(), String> {
+    // Tab e a capo romperebbero il formato: si riducono a spazi.
+    let pulisci = |t: &str| t.replace(['\t', '\n', '\r'], " ").trim().to_string();
+    let riga = format!("{}\t{}\n", pulisci(domanda), pulisci(risposta));
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(percorso_anki(materia))
+        .and_then(|mut f| f.write_all(riga.as_bytes()))
+        .map_err(|e| format!("Non riesco a scrivere le carte Anki: {e}"))
+}
+
+/// Legge le carte Anki di un esame.
+pub fn leggi_anki(esame: &str) -> String {
+    fs::read_to_string(percorso_anki(esame)).unwrap_or_default()
 }
 
 /// Legge il contenuto del file dei riassunti.

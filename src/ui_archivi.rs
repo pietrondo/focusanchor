@@ -35,6 +35,10 @@ pub fn sezione_archivi(ui: &mut egui::Ui, stato: &mut StatoApp) {
     });
     ui.add_space(6.0);
 
+    sezione_anki(ui, stato);
+
+    ui.add_space(6.0);
+
     if ui
         .add(
             egui::Button::new(
@@ -52,6 +56,35 @@ pub fn sezione_archivi(ui: &mut egui::Ui, stato: &mut StatoApp) {
         egui::RichText::new(
             "Crea un file per esame con tutte le sottolineature e i tuoi riassunti, \
              pronto da caricare su NotebookLM per l'Audio Overview.",
+        )
+        .size(12.0)
+        .color(TENUE),
+    );
+}
+
+/// Pulsante e spiegazione delle carte per Anki.
+fn sezione_anki(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    if ui
+        .add(
+            egui::Button::new(
+                egui::RichText::new("📇 Carte per Anki").size(15.0).strong(),
+            )
+            .min_size(egui::vec2(crate::ui::larghezza(ui), 36.0)),
+        )
+        .on_hover_text("Le tue risposte, pronte per il ripasso dilazionato")
+        .clicked()
+    {
+        let esame = stato.nome_esame();
+        mostra_contenuto(
+            ui,
+            &format!("anki_{}.txt", archivi::nome_file_sicuro(&esame)),
+            &archivi::leggi_anki(&esame),
+        );
+    }
+    ui.label(
+        egui::RichText::new(
+            "Ogni risposta alle domande a tradimento diventa una carta. \
+             Importa il file in Anki (formato tabulato) per ripassare nei giorni giusti.",
         )
         .size(12.0)
         .color(TENUE),

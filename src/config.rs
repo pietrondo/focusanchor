@@ -5,6 +5,21 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+/// Scheda di un esame: le informazioni che servono per prepararlo.
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct InfoEsame {
+    /// Pagina del corso su Unimi o altro ateneo.
+    pub url: String,
+    /// Crediti formativi.
+    pub crediti: u32,
+    /// Modalita' d'esame: "Scritto", "Orale" o entrambi.
+    pub modalita: String,
+    /// Vero se il programma e' da non frequentante.
+    pub non_frequentante: bool,
+    /// Data dell'appello a cui si punta, formato `AAAA-MM-GG`.
+    pub data_esame: String,
+}
+
 /// Configurazione salvata su disco accanto all'eseguibile.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Configurazione {
@@ -42,6 +57,18 @@ pub struct Configurazione {
     /// pagina iniziale.
     #[serde(default)]
     pub notebook_esami: std::collections::BTreeMap<String, String>,
+    /// Scheda di ogni esame: link al corso, crediti, modalita', data.
+    #[serde(default)]
+    pub esami: std::collections::BTreeMap<String, InfoEsame>,
+    /// Punti XP accumulati: sopravvivono alla chiusura dell'app.
+    #[serde(default)]
+    pub xp_punti: i32,
+    /// Distrazioni sventate in totale.
+    #[serde(default)]
+    pub xp_distrazioni: u32,
+    /// Modello usato per l'assistente AI, in formato `provider/modello`.
+    #[serde(default = "modello_ai_default")]
+    pub modello_ai: String,
 }
 
 impl Default for Configurazione {
@@ -59,6 +86,10 @@ impl Default for Configurazione {
             parole_vietate: default_parole(),
             cartella_zotero: String::new(),
             notebook_esami: std::collections::BTreeMap::new(),
+            esami: std::collections::BTreeMap::new(),
+            xp_punti: 0,
+            xp_distrazioni: 0,
+            modello_ai: modello_ai_default(),
         }
     }
 }
@@ -66,6 +97,11 @@ impl Default for Configurazione {
 /// Valore di default `true`, usato da serde quando il campo manca.
 fn vero() -> bool {
     true
+}
+
+/// Modello AI predefinito: quello gia' configurato in OpenCode.
+fn modello_ai_default() -> String {
+    "opencode-go/deepseek-v4.1-flash".to_string()
 }
 
 /// Domini bloccati per default (social e video che fanno perdere il filo).
