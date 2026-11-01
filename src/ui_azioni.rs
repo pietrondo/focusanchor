@@ -67,6 +67,7 @@ pub fn disegna(
         let etichetta = match modalita {
             crate::audio::ModalitaAudio::Spenta => "🎵 Spento",
             crate::audio::ModalitaAudio::RumoreMarrone => "🎵 Marrone",
+            crate::audio::ModalitaAudio::Pioggia => "🎵 Pioggia",
             crate::audio::ModalitaAudio::Binaurale40 => "🎵 40Hz",
         };
         if ui

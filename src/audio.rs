@@ -13,6 +13,7 @@ use std::time::Duration;
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 
 use crate::suono::{Beep, Binaurale40, RumoreMarrone};
+use crate::suono_pioggia::Pioggia;
 
 /// Modalita' di audio di sottofondo scelta dall'utente.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +22,8 @@ pub enum ModalitaAudio {
     Spenta,
     /// Rumore marrone per mascherare i pensieri intrusivi.
     RumoreMarrone,
+    /// Pioggia: stesso mascheramento, ma con un suono piu' naturale.
+    Pioggia,
     /// Battito binaurale a 40 Hz per contrastare la sonnolenza.
     Binaurale40,
 }
@@ -31,6 +34,7 @@ impl ModalitaAudio {
         match self {
             ModalitaAudio::Spenta => "Spento",
             ModalitaAudio::RumoreMarrone => "Rumore Marrone",
+            ModalitaAudio::Pioggia => "Pioggia",
             ModalitaAudio::Binaurale40 => "Sveglia 40Hz Anti-Sonno",
         }
     }
@@ -39,7 +43,8 @@ impl ModalitaAudio {
     pub fn successiva(&self) -> Self {
         match self {
             ModalitaAudio::Spenta => ModalitaAudio::RumoreMarrone,
-            ModalitaAudio::RumoreMarrone => ModalitaAudio::Binaurale40,
+            ModalitaAudio::RumoreMarrone => ModalitaAudio::Pioggia,
+            ModalitaAudio::Pioggia => ModalitaAudio::Binaurale40,
             ModalitaAudio::Binaurale40 => ModalitaAudio::Spenta,
         }
     }
@@ -48,8 +53,32 @@ impl ModalitaAudio {
     pub fn precedente(&self) -> Self {
         match self {
             ModalitaAudio::Spenta => ModalitaAudio::Binaurale40,
+            ModalitaAudio::Pioggia => ModalitaAudio::RumoreMarrone,
             ModalitaAudio::RumoreMarrone => ModalitaAudio::Spenta,
             ModalitaAudio::Binaurale40 => ModalitaAudio::RumoreMarrone,
+        }
+    }
+
+    /// Nome salvato in configurazione.
+    ///
+    /// La conversione sta qui e non nello stato: chi aggiunge una modalita'
+    /// non deve ricordarsi di cercare le due match sparse in altri file.
+    pub fn nome(&self) -> &'static str {
+        match self {
+            ModalitaAudio::Spenta => "Spenta",
+            ModalitaAudio::RumoreMarrone => "RumoreMarrone",
+            ModalitaAudio::Pioggia => "Pioggia",
+            ModalitaAudio::Binaurale40 => "Binaurale40",
+        }
+    }
+
+    /// Modalita' letta dalla configurazione, con il marrone come ripiego.
+    pub fn da_nome(nome: &str) -> Self {
+        match nome {
+            "Binaurale40" => ModalitaAudio::Binaurale40,
+            "Spenta" => ModalitaAudio::Spenta,
+            "Pioggia" => ModalitaAudio::Pioggia,
+            _ => ModalitaAudio::RumoreMarrone,
         }
     }
 
@@ -153,6 +182,7 @@ impl MotoreAudio {
         sink.set_volume(self.volume_sottofondo);
         match modalita {
             ModalitaAudio::Binaurale40 => sink.append(Binaurale40::nuovo()),
+            ModalitaAudio::Pioggia => sink.append(Pioggia::nuovo()),
             _ => sink.append(RumoreMarrone::nuovo()),
         }
         self.sink_sottofondo = Some(sink);

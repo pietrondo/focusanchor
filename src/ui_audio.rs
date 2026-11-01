@@ -33,6 +33,7 @@ pub fn sezione_audio(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut Motore
             ModalitaAudio::RumoreMarrone => {
                 "Rumore marrone: copre i rumori e i pensieri intrusivi."
             }
+            ModalitaAudio::Pioggia => "Pioggia: copre come il rumore, ma suona come pioggia.",
             ModalitaAudio::Binaurale40 => {
                 "Binaurale 40Hz: usa le cuffie, tiene su la vigilanza."
             }

@@ -283,20 +283,12 @@ impl StatoApp {
 
     /// Modalita' audio attualmente selezionata.
     pub fn modalita_audio(&self) -> ModalitaAudio {
-        match self.config.modalita_audio.as_str() {
-            "Binaurale40" => ModalitaAudio::Binaurale40,
-            "Spenta" => ModalitaAudio::Spenta,
-            _ => ModalitaAudio::RumoreMarrone,
-        }
+        ModalitaAudio::da_nome(&self.config.modalita_audio)
     }
 
     /// Imposta la modalita' audio e la salva in configurazione.
     pub fn imposta_modalita_audio(&mut self, modalita: ModalitaAudio) {
-        self.config.modalita_audio = match modalita {
-            ModalitaAudio::Spenta => "Spenta".to_string(),
-            ModalitaAudio::RumoreMarrone => "RumoreMarrone".to_string(),
-            ModalitaAudio::Binaurale40 => "Binaurale40".to_string(),
-        };
+        self.config.modalita_audio = modalita.nome().to_string();
     }
 
     /// Velocita' della voce attualmente selezionata.
