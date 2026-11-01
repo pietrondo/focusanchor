@@ -109,6 +109,8 @@ impl StatoApp {
         // Il punto di partenza degli XP: lo storico registra il guadagno
         // della sessione, non il totale accumulato da sempre.
         self.xp_a_inizio = (self.xp.punti, self.xp.distrazioni);
+        self.tempo_documenti.clear();
+        self.ultimo_campione = Instant::now();
         let parole = crate::config::righe_alla_lista(&self.testo_parole);
         // La guardia deve sapere quali testi appartengono all'esame scelto.
         self.guardia = Some(Guardia::avvia(parole, self.testi_scelti.clone(), mittente.clone()));
@@ -146,6 +148,7 @@ impl StatoApp {
             xp: (self.xp.punti - xp_inizio).max(0),
             distrazioni: self.xp.distrazioni.saturating_sub(distrazioni_inizio),
             blocchi: self.task.completati,
+            tempo_documenti: self.tempo_documenti.clone(),
         })
     }
 

@@ -33,6 +33,12 @@ pub struct SessioneRegistrata {
     pub distrazioni: u32,
     /// Micro-task completati.
     pub blocchi: u32,
+    /// Secondi passati su ogni documento, per titolo.
+    ///
+    /// I file scritti dalle versioni precedenti non hanno questo campo: il
+    /// default vuoto li tiene leggibili invece di buttare tutto lo storico.
+    #[serde(default)]
+    pub tempo_documenti: std::collections::BTreeMap<String, u32>,
 }
 
 /// Riepilogo leggibile dello storico.
@@ -50,6 +56,12 @@ pub struct Statistiche {
     pub per_esame: Vec<(String, u32)>,
     /// Minuti di studio negli ultimi 7 giorni.
     pub ultimi_7_giorni: u32,
+    /// Secondi passati sui testi d'esame.
+    pub secondi_testi: u32,
+    /// Secondi passati sui riassunti.
+    pub secondi_riassunti: u32,
+    /// Secondi per documento, dal piu' seguito.
+    pub per_documento: Vec<(String, u32)>,
 }
 
 /// Percorso del file dello storico.
@@ -93,6 +105,8 @@ pub fn statistiche(elenco: &[SessioneRegistrata]) -> Statistiche {
     let oggi = Local::now().date_naive();
     let mut per_esame: std::collections::BTreeMap<String, u32> =
         std::collections::BTreeMap::new();
+    let mut per_documento: std::collections::BTreeMap<String, u32> =
+        std::collections::BTreeMap::new();
 
     for s in elenco {
         stat.minuti += s.minuti;
@@ -102,11 +116,23 @@ pub fn statistiche(elenco: &[SessioneRegistrata]) -> Statistiche {
         if entro_giorni(&s.data, oggi, 7) {
             stat.ultimi_7_giorni += s.minuti;
         }
+        for (titolo, secondi) in &s.tempo_documenti {
+            *per_documento.entry(titolo.clone()).or_insert(0) += secondi;
+            if crate::tempo::e_riassunto(titolo) {
+                stat.secondi_riassunti += secondi;
+            } else {
+                stat.secondi_testi += secondi;
+            }
+        }
     }
 
     let mut coppie: Vec<(String, u32)> = per_esame.into_iter().collect();
     coppie.sort_by(|a, b| b.1.cmp(&a.1));
     stat.per_esame = coppie;
+
+    let mut documenti: Vec<(String, u32)> = per_documento.into_iter().collect();
+    documenti.sort_by(|a, b| b.1.cmp(&a.1));
+    stat.per_documento = documenti;
     stat
 }
 
@@ -147,6 +173,7 @@ mod test {
             xp,
             distrazioni: 0,
             blocchi: 0,
+            tempo_documenti: Default::default(),
         }
     }
 
@@ -164,6 +191,29 @@ mod test {
         // L'esame piu' studiato viene per primo.
         assert_eq!(stat.per_esame[0].0, "Storia romana");
         assert_eq!(stat.per_esame[0].1, 70);
+    }
+
+    #[test]
+    fn i_tempi_per_documento_si_sommano_e_si_separano() {
+        let mut prima = record("Storia romana", 25, 100, "2026-11-01 10:00");
+        prima
+            .tempo_documenti
+            .insert("Manuale di storia romana".into(), 900);
+        prima
+            .tempo_documenti
+            .insert("Riassunti e appunti".into(), 300);
+
+        let mut seconda = record("Storia romana", 25, 100, "2026-11-02 10:00");
+        seconda
+            .tempo_documenti
+            .insert("Manuale di storia romana".into(), 600);
+
+        let stat = statistiche(&[prima, seconda]);
+        assert_eq!(stat.secondi_testi, 1500);
+        assert_eq!(stat.secondi_riassunti, 300);
+        // Il documento piu' seguito viene per primo.
+        assert_eq!(stat.per_documento[0].0, "Manuale di storia romana");
+        assert_eq!(stat.per_documento[0].1, 1500);
     }
 
     #[test]

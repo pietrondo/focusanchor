@@ -56,6 +56,62 @@ pub fn sezione_storico(ui: &mut egui::Ui, stato: &mut StatoApp) {
             );
         }
     }
+
+    sezione_documenti(ui, &stat);
+}
+
+/// Dove sei stato davvero: tempo sui testi e tempo sui riassunti.
+///
+/// E' la domanda che i minuti di sessione non sanno rispondere: tre ore sul
+/// manuale e tre ore sul riassunto sono lo stesso numero e due lavori diversi.
+fn sezione_documenti(ui: &mut egui::Ui, stat: &crate::storico::Statistiche) {
+    let totale = stat.secondi_testi + stat.secondi_riassunti;
+    if totale == 0 {
+        return;
+    }
+    ui.add_space(8.0);
+    ui.label(
+        egui::RichText::new("Dove sei stato")
+            .size(12.0)
+            .strong()
+            .color(TENUE),
+    );
+    ui.horizontal(|ui| {
+        crate::ui::badge(ui, &format!("📖 Testi {}", durata(stat.secondi_testi)), ACCENTO);
+        crate::ui::badge(
+            ui,
+            &format!("📝 Riassunti {}", durata(stat.secondi_riassunti)),
+            crate::ui::GIALLO,
+        );
+    });
+
+    let massimo = stat
+        .per_documento
+        .iter()
+        .map(|(_, secondi)| *secondi)
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    for (titolo, secondi) in stat.per_documento.iter().take(5) {
+        let frazione = *secondi as f32 / massimo as f32;
+        let etichetta = format!("{}  {}", crate::ui::accorcia(titolo, 30), durata(*secondi));
+        ui.add(
+            egui::ProgressBar::new(frazione)
+                .desired_height(16.0)
+                .rounding(egui::Rounding::same(6.0))
+                .fill(crate::ui::GIALLO.gamma_multiply(0.6))
+                .text(egui::RichText::new(etichetta).size(11.0)),
+        );
+    }
+}
+
+/// Durata leggibile da secondi: `45 s`, `12 min`, `2 h 05`.
+fn durata(secondi: u32) -> String {
+    match secondi {
+        0..=59 => format!("{secondi} s"),
+        60..=3599 => format!("{} min", secondi / 60),
+        _ => format!("{} h {:02}", secondi / 3600, (secondi % 3600) / 60),
+    }
 }
 
 /// Appello piu' vicino: quanti giorni mancano e quali esami cadono quel giorno.

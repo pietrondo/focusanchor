@@ -19,6 +19,7 @@ mod state;
 mod storico;
 mod suono;
 mod task;
+mod tempo;
 mod tts;
 mod ui;
 mod ui_ai;
@@ -204,6 +205,7 @@ impl eframe::App for AppFocus {
         self.stato.sincronizza_voce(&mut self.audio);
         self.stato.ai.aggiorna();
         self.stato.aggiorna_sessione(&mut self.audio);
+        self.stato.campiona_tempo();
         self.stato.aggiorna_interleaving(&mut self.audio);
         self.stato.aggiorna_voce(&mut self.audio);
         self.controlla_sfida();

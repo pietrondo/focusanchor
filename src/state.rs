@@ -37,6 +37,13 @@ pub struct StatoApp {
     /// Servono a scrivere nello storico il guadagno della sessione e non il
     /// totale di sempre, che verrebbe sommato una seconda volta.
     pub xp_a_inizio: (i32, u32),
+    /// Secondi passati su ogni documento durante la sessione in corso.
+    ///
+    /// La chiave e' il titolo del documento (o `tempo::CHIAVE_RIASSUNTI` per
+    /// i riassunti aperti fuori da Zotero).
+    pub tempo_documenti: std::collections::BTreeMap<String, u32>,
+    /// Ultimo istante del campionamento della finestra in primo piano.
+    pub ultimo_campione: Instant,
     /// Modulo anti-noia e anti-sonno.
     pub anti_sonno: AntiSonno,
     /// Micro-task di studio in corso.
@@ -103,6 +110,8 @@ impl StatoApp {
             guardia: None,
             xp,
             xp_a_inizio: (0, 0),
+            tempo_documenti: std::collections::BTreeMap::new(),
+            ultimo_campione: Instant::now(),
             anti_sonno: AntiSonno::nuovo(sfide),
             task: crate::task::GestoreTask::nuovo(),
             ai: crate::ai::Assistente::nuovo(),
