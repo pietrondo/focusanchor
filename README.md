@@ -40,7 +40,9 @@ costa 25 XP.
 
 - Legge il database locale di Zotero con uno snapshot coerente (API di backup
   di SQLite), quindi Zotero può restare aperto.
-- Menu degli esami (le collezioni Zotero) e dei testi al loro interno.
+- Menu degli esami (le collezioni Zotero) e dei testi al loro interno, con
+  **lettura ricorsiva**: i materiali nelle sottocollezioni contano come parte
+  dell'esame.
 - Rileva il PDF che stai leggendo dalla finestra di Zotero.
 - Avvisa se apri un PDF di un altro esame (cooldown di 15 secondi).
 - Genera una scheda per NotebookLM divisa per esame.

@@ -2,6 +2,10 @@
 //!
 //! Ogni query lavora sullo snapshot creato da `zotero::crea_snapshot_con`,
 //! aperto in sola lettura: Zotero puo' restare aperto senza conflitti.
+//!
+//! Le collezioni sono ad albero e i materiali finiscono spesso nelle
+//! sottocollezioni: ogni query scende ricorsivamente, altrimenti un esame
+//! sembrerebbe vuoto solo perche' i libri stanno un livello piu' sotto.
 
 use std::path::Path;
 
@@ -12,6 +16,16 @@ use crate::zotero::{Collezione, Documento, Evidenziazione};
 /// Sottoquery che estrae l'identificativo del campo "title".
 const CAMPO_TITOLO: &str = "(SELECT fieldID FROM fields WHERE fieldName='title')";
 
+/// Espressione ricorsiva: la collezione `?1` piu' tutte le sue discendenti.
+const DISCENDENTI: &str = "
+    WITH RECURSIVE discendenti(id) AS (
+        SELECT ?1
+        UNION
+        SELECT c.collectionID
+        FROM collections c
+        JOIN discendenti d ON c.parentCollectionID = d.id
+    )";
+
 /// Apre in sola lettura lo snapshot del database Zotero.
 pub fn apri_snapshot(snapshot: &Path) -> Result<Connection, String> {
     Connection::open_with_flags(
@@ -21,22 +35,35 @@ pub fn apri_snapshot(snapshot: &Path) -> Result<Connection, String> {
     .map_err(|e| format!("Apertura database Zotero: {e}"))
 }
 
-/// Elenco delle collezioni, cioe' gli esami da preparare.
+/// Elenco degli esami: solo le collezioni di primo livello.
 ///
-/// Il conteggio esclude gli item nel cestino: altrimenti una collezione
-/// svuotata mostrerebbe "7 documenti" e poi una lista vuota.
+/// Documenti e sottocollezioni sono contati in modo ricorsivo, cosi' un esame
+/// mostra tutto il materiale che contiene davvero. Il conteggio esclude gli
+/// item nel cestino, altrimenti una collezione svuotata direbbe "7 documenti"
+/// e poi mostrerebbe una lista vuota.
 pub fn collezioni(snapshot: &Path) -> Result<Vec<Collezione>, String> {
     let db = apri_snapshot(snapshot)?;
     let query = "
+        WITH RECURSIVE albero(radice, id) AS (
+            SELECT collectionID, collectionID FROM collections
+            UNION
+            SELECT a.radice, c.collectionID
+            FROM collections c
+            JOIN albero a ON c.parentCollectionID = a.id
+        )
         SELECT c.collectionID, c.collectionName,
                (SELECT COUNT(DISTINCT COALESCE(ia.parentItemID, ci.itemID))
-                FROM collectionItems ci
+                FROM albero a
+                JOIN collectionItems ci ON ci.collectionID = a.id
                 JOIN items i ON i.itemID = ci.itemID
                 LEFT JOIN itemAttachments ia ON ia.itemID = i.itemID
-                WHERE ci.collectionID = c.collectionID
+                WHERE a.radice = c.collectionID
                   AND COALESCE(ia.parentItemID, ci.itemID)
-                      NOT IN (SELECT itemID FROM deletedItems))
+                      NOT IN (SELECT itemID FROM deletedItems)),
+               (SELECT COUNT(*) - 1 FROM albero a WHERE a.radice = c.collectionID)
         FROM collections c
+        WHERE c.parentCollectionID IS NULL
+          AND c.collectionID NOT IN (SELECT collectionID FROM deletedCollections)
         ORDER BY c.collectionName";
     let mut stmt = db.prepare(query).map_err(|e| e.to_string())?;
     let righe = stmt
@@ -45,6 +72,7 @@ pub fn collezioni(snapshot: &Path) -> Result<Vec<Collezione>, String> {
                 id: r.get(0)?,
                 nome: r.get(1)?,
                 documenti: r.get::<_, i64>(2)? as usize,
+                sottocollezioni: r.get::<_, i64>(3)? as usize,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -59,7 +87,7 @@ pub fn collezioni(snapshot: &Path) -> Result<Vec<Collezione>, String> {
     Ok(risultati)
 }
 
-/// Documenti di una collezione, con il titolo del loro item padre.
+/// Documenti di un esame, sottocollezioni comprese.
 ///
 /// La collezione contiene sia i PDF sia gli item che li contengono: si prende
 /// sempre il padre, cosi' l'utente vede il titolo del testo e non "PDF".
@@ -70,17 +98,17 @@ pub fn documenti_collezione(
 ) -> Result<Vec<Documento>, String> {
     let db = apri_snapshot(snapshot)?;
     let query = format!(
-        "
+        "{DISCENDENTI}
         SELECT DISTINCT p.key, v.value, it.typeName, p.dateAdded
         FROM collectionItems ci
+        JOIN discendenti d ON d.id = ci.collectionID
         JOIN items i ON i.itemID = ci.itemID
         LEFT JOIN itemAttachments ia ON ia.itemID = i.itemID
         JOIN items p ON p.itemID = COALESCE(ia.parentItemID, i.itemID)
         JOIN itemTypes it ON it.itemTypeID = p.itemTypeID
-        JOIN itemData d ON d.itemID = p.itemID AND d.fieldID = {CAMPO_TITOLO}
-        JOIN itemDataValues v ON v.valueID = d.valueID
-        WHERE ci.collectionID = ?1
-          AND p.itemID NOT IN (SELECT itemID FROM deletedItems)
+        JOIN itemData dd ON dd.itemID = p.itemID AND dd.fieldID = {CAMPO_TITOLO}
+        JOIN itemDataValues v ON v.valueID = dd.valueID
+        WHERE p.itemID NOT IN (SELECT itemID FROM deletedItems)
         ORDER BY p.dateAdded DESC
         LIMIT ?2"
     );
@@ -106,7 +134,7 @@ pub fn documenti_collezione(
     Ok(risultati)
 }
 
-/// Estrae le ultime sottolineature, eventualmente filtrate per collezione.
+/// Estrae le ultime sottolineature, filtrate per esame (sottocollezioni incluse).
 ///
 /// Il filtro per esame e' quello che rende utile l'interrogazione: le domande
 /// a tradimento devono nascere dai testi che l'utente sta studiando adesso,
@@ -118,7 +146,8 @@ pub fn evidenziazioni_esame(
 ) -> Result<Vec<Evidenziazione>, String> {
     let db = apri_snapshot(snapshot)?;
     // Il legame e': annotazione -> attachment (padre) -> item nella collezione.
-    let query = "
+    let query = format!(
+        "{DISCENDENTI}
         SELECT a.text, a.comment, i.dateAdded
         FROM itemAnnotations a
         JOIN items i ON i.itemID = a.itemID
@@ -126,12 +155,13 @@ pub fn evidenziazioni_esame(
         WHERE a.text IS NOT NULL AND a.text != ''
           AND (
             ?1 IS NULL
-            OR ia.parentItemID IN (SELECT itemID FROM collectionItems WHERE collectionID = ?1)
-            OR ia.itemID IN (SELECT itemID FROM collectionItems WHERE collectionID = ?1)
+            OR ia.parentItemID IN (SELECT id FROM discendenti)
+            OR ia.itemID IN (SELECT id FROM discendenti)
           )
         ORDER BY a.itemID DESC
-        LIMIT ?2";
-    let mut stmt = db.prepare(query).map_err(|e| e.to_string())?;
+        LIMIT ?2"
+    );
+    let mut stmt = db.prepare(&query).map_err(|e| e.to_string())?;
     let righe = stmt
         .query_map(rusqlite::params![collezione, limite as i64], |r| {
             Ok(Evidenziazione {
@@ -187,21 +217,30 @@ mod test {
         assert!(snapshot.exists());
 
         let elenco = collezioni(&snapshot).expect("query collezioni");
-        println!("collezioni: {}", elenco.len());
-        for c in elenco.iter().take(8) {
-            println!("  [{}] {} ({} documenti)", c.id, c.nome, c.documenti);
+        println!("esami (collezioni di primo livello): {}", elenco.len());
+        for c in elenco.iter().take(12) {
+            println!(
+                "  [{}] {} — {} documenti, {} sottocollezioni",
+                c.id, c.nome, c.documenti, c.sottocollezioni
+            );
         }
         assert!(!elenco.is_empty(), "l'utente ha almeno una collezione");
 
-        // Ogni collezione con documenti deve restituirli davvero: conteggio
-        // e lista devono restare coerenti (era il bug dei cestinati).
-        for c in elenco.iter().filter(|c| c.documenti > 0).take(3) {
+        // Ogni esame con documenti deve restituirli davvero: il conteggio
+        // ricorsivo e la lista devono restare coerenti.
+        for c in elenco.iter().filter(|c| c.documenti > 0).take(4) {
             let documenti =
                 documenti_collezione(&snapshot, c.id, 20).expect("documenti collezione");
             println!("documenti di '{}': {}", c.nome, documenti.len());
             for d in documenti.iter().take(3) {
                 println!("   - {}", d.titolo);
             }
+            assert!(
+                !documenti.is_empty(),
+                "'{}' dichiara {} documenti ma non ne restituisce nessuno",
+                c.nome,
+                c.documenti
+            );
         }
 
         let tutte = evidenziazioni_esame(&snapshot, None, 10).expect("evidenze globali");

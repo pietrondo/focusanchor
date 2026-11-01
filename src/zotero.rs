@@ -31,8 +31,10 @@ pub struct Collezione {
     pub id: i64,
     /// Nome dell'esame o della collezione.
     pub nome: String,
-    /// Numero di documenti contenuti.
+    /// Numero di documenti contenuti, sottocollezioni comprese.
     pub documenti: usize,
+    /// Numero di sottocollezioni da cui arrivano i documenti.
+    pub sottocollezioni: usize,
 }
 
 /// Sottolineatura o nota fatta dall'utente con il pennarello.

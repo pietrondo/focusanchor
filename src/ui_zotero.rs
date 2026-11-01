@@ -35,7 +35,14 @@ pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
         .selected_text(egui::RichText::new(esame_corrente).size(15.0))
         .show_ui(ui, |ui| {
             for collezione in &stato.collezioni {
-                let etichetta = format!("{}  ·  {} doc.", collezione.nome, collezione.documenti);
+                let etichetta = if collezione.sottocollezioni > 0 {
+                    format!(
+                        "{}  ·  {} doc. ({} sottocollezioni)",
+                        collezione.nome, collezione.documenti, collezione.sottocollezioni
+                    )
+                } else {
+                    format!("{}  ·  {} doc.", collezione.nome, collezione.documenti)
+                };
                 ui.selectable_value(&mut nuovo_esame, Some(collezione.id), etichetta);
             }
         });
