@@ -26,6 +26,7 @@ pub fn sezione_ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
             .size(13.0)
             .color(TENUE),
         );
+        pulsante_genera(ui, stato);
         return;
     }
 
@@ -126,6 +127,41 @@ pub fn sezione_ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
             }
         }
     });
+}
+
+/// Crea carte dalle sottolineature lette da Zotero.
+///
+/// E' l'unico modo di avere qualcosa da ripassare prima della prima sessione,
+/// e usa materiale che hai gia' scelto tu.
+fn pulsante_genera(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    if stato.evidenziazioni.is_empty() {
+        ui.label(
+            egui::RichText::new(
+                "Per generarle subito, carica un esame con le sue sottolineature da Zotero.",
+            )
+            .size(12.0)
+            .color(TENUE),
+        );
+        return;
+    }
+    let quante = stato.evidenziazioni.len();
+    if ui
+        .add(
+            egui::Button::new(format!("📄 Genera dalle {quante} sottolineature"))
+                .min_size(egui::vec2(crate::ui::larghezza(ui), 32.0)),
+        )
+        .on_hover_text("Una carta per ogni passaggio che hai evidenziato in Zotero")
+        .clicked()
+    {
+        let esame = stato.memoria_esame.clone();
+        match crate::carte_sottolineature::genera(&esame, &stato.evidenziazioni) {
+            Ok((memoria, aggiunte)) => {
+                stato.memoria = memoria;
+                stato.aggiungi_notifica(&format!("{aggiunte} carte create dalle sottolineature."));
+            }
+            Err(e) => stato.avviso = Some(e),
+        }
+    }
 }
 
 /// Registra il giudizio, salva e passa alla carta successiva.

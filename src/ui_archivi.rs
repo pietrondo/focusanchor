@@ -4,7 +4,7 @@ use eframe::egui;
 
 use crate::archivi;
 use crate::state::StatoApp;
-use crate::ui::{mostra_contenuto, TENUE};
+use crate::ui::{mostra_contenuto, TENUE, VIOLA};
 use crate::zotero_query;
 
 /// Visualizzatori dei file e generazione del pacchetto NotebookLM.
@@ -46,6 +46,7 @@ pub fn sezione_archivi(ui: &mut egui::Ui, stato: &mut StatoApp) {
                     .size(15.0)
                     .strong(),
             )
+            .fill(VIOLA.gamma_multiply(0.35))
             .min_size(egui::vec2(crate::ui::larghezza(ui), 40.0)),
         )
         .clicked()

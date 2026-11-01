@@ -122,6 +122,8 @@ impl MotoreAudio {
         }
         // Chiude stdin: senza questo PowerShell aspetterebbe input per sempre.
         drop(child.stdin.take());
+        // La voce deve passare sopra il rumore, non dentro.
+        self.abbassa_sottofondo();
         let _ = self.tx.send(Voce::Iniziata);
         if let Ok(mut processi) = self.processi.lock() {
             processi.push(child);
@@ -140,6 +142,7 @@ impl MotoreAudio {
             processi.clear();
         }
         if ha_fermato {
+            self.ripristina_sottofondo();
             let _ = self.tx.send(Voce::Interrotta);
         }
     }
@@ -157,6 +160,8 @@ impl MotoreAudio {
             });
         }
         if terminato {
+            // Fine lettura: il rumore torna al volume scelto.
+            self.ripristina_sottofondo();
             let _ = self.tx.send(Voce::Terminata);
         }
     }

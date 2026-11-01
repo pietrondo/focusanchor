@@ -80,6 +80,11 @@ pub struct MotoreAudio {
     handle: Option<OutputStreamHandle>,
     /// Sink del suono di sottofondo.
     sink_sottofondo: Option<Sink>,
+    /// Volume scelto dall'utente per il sottofondo.
+    ///
+    /// Va ricordato: mentre parla la voce il sottofondo viene abbassato, e
+    /// senza questo valore non si saprebbe a quanto rimetterlo.
+    volume_sottofondo: f32,
     /// Modalita' attualmente in riproduzione.
     modalita: ModalitaAudio,
     /// Vero se la voce e' abilitata.
@@ -100,6 +105,7 @@ impl MotoreAudio {
             _stream: None,
             handle: None,
             sink_sottofondo: None,
+            volume_sottofondo: 0.35,
             modalita: ModalitaAudio::Spenta,
             voce_attiva: true,
             tx,
@@ -143,7 +149,8 @@ impl MotoreAudio {
         }
         let handle = self.handle.as_ref().expect("stream appena creato");
         let sink = Sink::try_new(handle).map_err(|e| e.to_string())?;
-        sink.set_volume(volume.clamp(0.0, 1.0));
+        self.volume_sottofondo = volume.clamp(0.0, 1.0);
+        sink.set_volume(self.volume_sottofondo);
         match modalita {
             ModalitaAudio::Binaurale40 => sink.append(Binaurale40::nuovo()),
             _ => sink.append(RumoreMarrone::nuovo()),
@@ -155,8 +162,27 @@ impl MotoreAudio {
 
     /// Regola il volume del suono di sottofondo.
     pub fn imposta_volume(&mut self, volume: f32) {
+        self.volume_sottofondo = volume.clamp(0.0, 1.0);
         if let Some(sink) = &self.sink_sottofondo {
-            sink.set_volume(volume.clamp(0.0, 1.0));
+            sink.set_volume(self.volume_sottofondo);
+        }
+    }
+
+    /// Abbassa il sottofondo mentre parla la voce.
+    ///
+    /// La voce non e' una traccia del nostro mixer: e' Windows che parla da
+    /// un altro processo. Senza abbassare il rumore, la voce resta sotto e
+    /// non si capisce niente.
+    pub fn abbassa_sottofondo(&mut self) {
+        if let Some(sink) = &self.sink_sottofondo {
+            sink.set_volume(volume_abbassato(self.volume_sottofondo));
+        }
+    }
+
+    /// Riporta il sottofondo al volume scelto.
+    pub fn ripristina_sottofondo(&mut self) {
+        if let Some(sink) = &self.sink_sottofondo {
+            sink.set_volume(self.volume_sottofondo);
         }
     }
 
@@ -189,6 +215,14 @@ impl MotoreAudio {
         self.pulizia_processi();
         self.rx.try_recv().ok()
     }
+}
+
+/// Volume del sottofondo mentre parla la voce.
+///
+/// Un quinto: la voce arriva da un altro programma e non passa dal nostro
+/// mixer, quindi deve avere la strada libera.
+fn volume_abbassato(volume: f32) -> f32 {
+    (volume * 0.2).clamp(0.0, 1.0)
 }
 
 impl Drop for MotoreAudio {

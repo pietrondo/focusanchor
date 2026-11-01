@@ -10,6 +10,7 @@ mod audio;
 mod audio_voce;
 mod blocker;
 mod carte;
+mod carte_sottolineature;
 mod comandi_zotero;
 mod comando;
 mod config;
@@ -78,8 +79,14 @@ impl AppFocus {
     fn nuovo(cc: &eframe::CreationContext<'_>) -> Self {
         ui::applica_tema(&cc.egui_ctx);
         let (mittente, canale) = std::sync::mpsc::channel();
+        let mut stato = StatoApp::nuovo();
+        // Gli esami si caricano da soli: partire da Zotero, premere Avvia nel
+        // pannello e trovare "nessun esame" sarebbe un giro a vuoto.
+        if stato.collezioni.is_empty() {
+            ui_esami::carica_esami(&mut stato);
+        }
         Self {
-            stato: StatoApp::nuovo(),
+            stato,
             audio: audio::MotoreAudio::nuovo(),
             canale,
             mittente,
