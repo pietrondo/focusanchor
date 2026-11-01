@@ -154,7 +154,7 @@ fn pannello_task(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut MotoreAudi
             );
             if ui.button("✋ Salta").clicked() {
                 stato.task.annulla();
-                stato.aggiungi_notifica("Micro-task saltato. Ripartiamo.");
+                stato.aggiungi_notifica("Blocco saltato. Ripartiamo.");
             }
         });
         ui.add(
@@ -170,7 +170,7 @@ fn pannello_task(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut MotoreAudi
         stato.xp.aggiungi(premio);
         // Solo un beep: un annuncio vocale a ogni blocco diventa rumore.
         audio.beep();
-        stato.aggiungi_notifica(&format!("+{premio} XP! Micro-task completato."));
+        stato.aggiungi_notifica(&format!("+{premio} XP! Blocco completato."));
         return;
     }
 

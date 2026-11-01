@@ -9,6 +9,10 @@
 /// La velocita' (`Rate`) e' regolabile: ascoltare a velocita' sostenuta
 /// combatte la noia tipica dell'ADHD.
 ///
+/// La voce viene scelta fra quelle **italiane**: senza questa scelta Windows
+/// usa la voce predefinita, che spesso e' inglese, e legge l'italiano con
+/// una pronuncia incomprensibile.
+///
 /// Il lettore e' esplicito su UTF-8: `[Console]::In` userebbe la codepage
 /// ANSI di Windows e trasformerebbe gli accenti italiani in spazzatura.
 pub fn script_tts(rate: i32) -> String {
@@ -17,6 +21,14 @@ pub fn script_tts(rate: i32) -> String {
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Speech
 $voce = New-Object System.Speech.Synthesis.SpeechSynthesizer
+
+# Voce italiana, se installata: senza questa scelta Windows legge l'italiano
+# con la voce predefinita, che quasi sempre e' inglese.
+$italiana = $voce.GetInstalledVoices() |
+    Where-Object {{ $_.VoiceInfo.Culture.Name -like 'it-*' }} |
+    Select-Object -First 1
+if ($italiana) {{ $voce.SelectVoice($italiana.VoiceInfo.Name) }}
+
 $voce.Rate = {rate}
 $voce.Volume = 100
 $flusso = [Console]::OpenStandardInput()
@@ -43,5 +55,12 @@ mod test {
         let script = script_tts(1);
         assert!(script.contains("[Text.Encoding]::UTF8"));
         assert!(script.contains("OpenStandardInput"));
+    }
+
+    #[test]
+    fn lo_script_sceglie_una_voce_italiana() {
+        let script = script_tts(1);
+        assert!(script.contains("Culture.Name -like 'it-*'"));
+        assert!(script.contains("SelectVoice"));
     }
 }

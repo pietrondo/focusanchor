@@ -46,7 +46,7 @@ pub fn disegna(
                         sezione_durata(ui, stato);
                     });
 
-                    scheda(ui, l, "🎧", "Audio", ARANCIO, |ui| {
+                    scheda(ui, l, "🎧", "Suono", ARANCIO, |ui| {
                         crate::ui_audio::sezione_audio(ui, stato, audio);
                     });
 
