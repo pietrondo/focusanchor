@@ -39,11 +39,24 @@ pub fn cambia_esame(stato: &mut StatoApp, nuovo: Option<i64>) {
 /// Ricarica i testi dell'esame tenendo le scelte ancora valide.
 ///
 /// Serve quando l'utente aggiunge libri in Zotero durante la preparazione:
-/// non deve perdere i testi gia' spuntati.
+/// non deve perdere i testi gia' spuntati. Lo snapshot viene rifatto da zero:
+/// rileggere la copia vecchia mostrerebbe sempre la stessa lista, e il
+/// pulsante direbbe una bugia.
 pub fn ricarica_testi(stato: &mut StatoApp) {
-    let (Some(id), Some(snapshot)) = (stato.esame_scelto, stato.snapshot_zotero.clone()) else {
+    let Some(id) = stato.esame_scelto else {
         return;
     };
+    let cartella = crate::config::cartella_dati();
+    let snapshot = match crate::zotero::crea_snapshot_con(&cartella, &stato.config.cartella_zotero)
+    {
+        Ok(s) => s,
+        Err(e) => {
+            stato.avviso = Some(e);
+            return;
+        }
+    };
+    stato.snapshot_zotero = Some(snapshot.clone());
+
     match zotero_query::documenti_collezione(&snapshot, id, 60) {
         Ok(documenti) => {
             stato.documenti_esame = documenti;

@@ -164,5 +164,12 @@ fn chiedi_all_ai(stato: &mut StatoApp) {
     };
     let esame = stato.nome_esame();
     let modello = stato.config.modello_ai.clone();
-    stato.ai.chiedi(&modello, &esame, &passaggio);
+    // Le sottolineature dell'esame vengono da Zotero: danno al modello il
+    // taglio del corso, non solo il paragrafo copiato.
+    let contesto: Vec<String> = stato
+        .evidenziazioni
+        .iter()
+        .map(|e| e.testo.clone())
+        .collect();
+    stato.ai.chiedi(&modello, &esame, &passaggio, &contesto);
 }

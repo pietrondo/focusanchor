@@ -46,7 +46,7 @@ pub fn sezione_storico(ui: &mut egui::Ui, stato: &mut StatoApp) {
         for (esame, minuti) in stat.per_esame.iter().take(6) {
             // Barra proporzionale: si vede a colpo d'occhio dove sei indietro.
             let frazione = *minuti as f32 / massimo as f32;
-            let etichetta = format!("{}  {} min", accorcia(esame, 34), minuti);
+            let etichetta = format!("{}  {} min", crate::ui::accorcia(esame, 34), minuti);
             ui.add(
                 egui::ProgressBar::new(frazione)
                     .desired_height(16.0)
@@ -55,18 +55,6 @@ pub fn sezione_storico(ui: &mut egui::Ui, stato: &mut StatoApp) {
                     .text(egui::RichText::new(etichetta).size(11.0)),
             );
         }
-    }
-}
-
-/// Accorcia un nome lungo senza spezzare le parole.
-fn accorcia(testo: &str, massimo: usize) -> String {
-    if testo.chars().count() <= massimo {
-        return testo.to_string();
-    }
-    let tagliato: String = testo.chars().take(massimo).collect();
-    match tagliato.rfind(' ') {
-        Some(pos) => format!("{}…", &tagliato[..pos]),
-        None => format!("{tagliato}…"),
     }
 }
 

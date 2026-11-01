@@ -8,11 +8,11 @@ use crate::ui::{badge, TENUE, VERDE};
 /// Sezione "Esame e testi": due menu in sequenza.
 pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
     if stato.collezioni.is_empty() {
-        stato_vuoto(ui, stato);
+        crate::ui_caricamento::stato_vuoto(ui, stato);
         return;
     }
 
-    pulsanti_caricamento(ui, stato);
+    crate::ui_caricamento::pulsanti_caricamento(ui, stato);
     ui.add_space(10.0);
 
     // Primo menu: l'esame, cioe' la collezione Zotero.
@@ -131,81 +131,6 @@ fn sezione_notebook(ui: &mut egui::Ui, stato: &mut StatoApp) {
     }
 }
 
-/// Stato vuoto: nessun esame caricato, con le due azioni in evidenza.
-fn stato_vuoto(ui: &mut egui::Ui, stato: &mut StatoApp) {
-    egui::Frame::none()
-        .fill(egui::Color32::from_rgb(21, 24, 30))
-        .stroke(egui::Stroke::new(1.0, crate::ui::BORDO))
-        .rounding(egui::Rounding::same(10.0))
-        .inner_margin(egui::Margin::same(16.0))
-        .show(ui, |ui| {
-            let l = crate::ui::larghezza(ui);
-            ui.set_min_width(l);
-            ui.vertical_centered(|ui| {
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("📚").size(26.0));
-                ui.label(
-                    egui::RichText::new("Nessun esame caricato")
-                        .size(15.0)
-                        .strong(),
-                );
-                ui.label(
-                    egui::RichText::new(
-                        "Apri Zotero, poi carica le collezioni: ognuna diventa un esame.",
-                    )
-                    .size(12.0)
-                    .color(TENUE),
-                );
-                ui.add_space(10.0);
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new("🔄 Carica esami da Zotero")
-                                .size(15.0)
-                                .strong(),
-                        )
-                        .fill(crate::ui::VERDE)
-                        .min_size(egui::vec2(l.min(320.0), 40.0)),
-                    )
-                    .clicked()
-                {
-                    crate::ui_esami::carica_esami(stato);
-                }
-                ui.add_space(4.0);
-                if ui
-                    .add(
-                        egui::Button::new("🔍 Rileva PDF aperto")
-                            .min_size(egui::vec2(l.min(320.0), 30.0)),
-                    )
-                    .clicked()
-                {
-                    crate::ui_esami::rileva_pdf_zotero(stato);
-                }
-                ui.add_space(4.0);
-            });
-        });
-}
-
-/// Pulsanti di caricamento, a larghezza uguale.
-fn pulsanti_caricamento(ui: &mut egui::Ui, stato: &mut StatoApp) {
-    let l = crate::ui::larghezza(ui);
-    let meta = ((l - 10.0) / 2.0).max(90.0);
-    ui.horizontal(|ui| {
-        if ui
-            .add(egui::Button::new("🔄 Carica da Zotero").min_size(egui::vec2(meta, 32.0)))
-            .clicked()
-        {
-            crate::ui_esami::carica_esami(stato);
-        }
-        if ui
-            .add(egui::Button::new("🔍 Rileva PDF").min_size(egui::vec2(meta, 32.0)))
-            .clicked()
-        {
-            crate::ui_esami::rileva_pdf_zotero(stato);
-        }
-    });
-}
-
 /// Secondo menu: i testi dell'esame, da spuntare in 2 o 3.
 fn sezione_testi(ui: &mut egui::Ui, stato: &mut StatoApp) {
     if stato.esame_scelto.is_none() {
@@ -264,17 +189,28 @@ fn elenco_testi(ui: &mut egui::Ui, stato: &mut StatoApp) {
     // Le modifiche si raccolgono prima e si applicano dopo: durante il ciclo
     // `stato.documenti_esame` e' preso in prestito.
     let mut da_alternare: Option<String> = None;
-    let mut da_aprire: Option<String> = None;
+    let mut da_aprire: Option<(String, bool)> = None;
     egui::ScrollArea::vertical().max_height(190.0).show(ui, |ui| {
         for documento in &stato.documenti_esame {
             let mut spuntato = stato.testo_scelto(&documento.titolo);
-            let etichetta = accorcia(&documento.titolo, 70);
+            let etichetta = crate::ui::accorcia(&documento.titolo, 70);
             let suggerimento = format!(
                 "{}\n{} · {}",
                 documento.titolo,
                 documento.tipo,
                 documento.data_aggiunta.get(0..10).unwrap_or("")
             );
+            // Se c'e' il PDF il pulsante lo apre direttamente: selezionare il
+            // libro nella libreria era un passaggio in piu' con un click in piu'.
+            let (chiave, e_pdf) = match &documento.chiave_pdf {
+                Some(chiave_pdf) => (chiave_pdf.clone(), true),
+                None => (documento.chiave.clone(), false),
+            };
+            let (simbolo, aiuto) = if e_pdf {
+                ("📄", "Apri il PDF in Zotero")
+            } else {
+                ("↗", "Seleziona questo testo in Zotero")
+            };
             ui.horizontal(|ui| {
                 if ui
                     .checkbox(&mut spuntato, etichetta)
@@ -284,11 +220,11 @@ fn elenco_testi(ui: &mut egui::Ui, stato: &mut StatoApp) {
                     da_alternare = Some(documento.titolo.clone());
                 }
                 if ui
-                    .small_button("↗")
-                    .on_hover_text("Apri questo documento in Zotero")
+                    .small_button(simbolo)
+                    .on_hover_text(aiuto)
                     .clicked()
                 {
-                    da_aprire = Some(documento.chiave.clone());
+                    da_aprire = Some((chiave, e_pdf));
                 }
             });
         }
@@ -296,21 +232,14 @@ fn elenco_testi(ui: &mut egui::Ui, stato: &mut StatoApp) {
     if let Some(titolo) = da_alternare {
         stato.alterna_testo(&titolo);
     }
-    if let Some(chiave) = da_aprire {
-        if let Err(e) = crate::zotero::apri_in_zotero(&chiave) {
+    if let Some((chiave, e_pdf)) = da_aprire {
+        let esito = if e_pdf {
+            crate::zotero::apri_pdf_in_zotero(&chiave)
+        } else {
+            crate::zotero::apri_in_zotero(&chiave)
+        };
+        if let Err(e) = esito {
             stato.avviso = Some(e);
         }
-    }
-}
-
-/// Accorcia un titolo lungo senza spezzare le parole a meta'.
-fn accorcia(testo: &str, massimo: usize) -> String {
-    if testo.chars().count() <= massimo {
-        return testo.to_string();
-    }
-    let tagliato: String = testo.chars().take(massimo).collect();
-    match tagliato.rfind(' ') {
-        Some(pos) => format!("{}…", &tagliato[..pos]),
-        None => format!("{tagliato}…"),
     }
 }

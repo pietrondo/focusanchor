@@ -99,7 +99,12 @@ pub fn documenti_collezione(
     let db = apri_snapshot(snapshot)?;
     let query = format!(
         "{DISCENDENTI}
-        SELECT DISTINCT p.key, v.value, it.typeName, p.dateAdded
+        SELECT DISTINCT p.key, v.value, it.typeName, p.dateAdded,
+               (SELECT i2.key FROM itemAttachments a2
+                  JOIN items i2 ON i2.itemID = a2.itemID
+                 WHERE a2.parentItemID = p.itemID
+                   AND a2.contentType = 'application/pdf'
+                 LIMIT 1)
         FROM collectionItems ci
         JOIN discendenti d ON d.id = ci.collectionID
         JOIN items i ON i.itemID = ci.itemID
@@ -115,12 +120,19 @@ pub fn documenti_collezione(
     let mut stmt = db.prepare(&query).map_err(|e| e.to_string())?;
     let righe = stmt
         .query_map([collezione, limite as i64], |r| {
-            Ok(Documento {
+            let mut documento = Documento {
                 chiave: r.get(0)?,
+                chiave_pdf: r.get(4)?,
                 titolo: r.get(1)?,
                 tipo: r.get(2)?,
                 data_aggiunta: r.get(3)?,
-            })
+            };
+            // Un PDF caricato da solo e' gia' l'allegato: la sua chiave apre
+            // il file, e non esiste nessun item padre.
+            if documento.chiave_pdf.is_none() && documento.tipo == "attachment" {
+                documento.chiave_pdf = Some(documento.chiave.clone());
+            }
+            Ok(documento)
         })
         .map_err(|e| e.to_string())?;
 
@@ -233,7 +245,11 @@ mod test {
                 documenti_collezione(&snapshot, c.id, 20).expect("documenti collezione");
             println!("documenti di '{}': {}", c.nome, documenti.len());
             for d in documenti.iter().take(3) {
-                println!("   - {}", d.titolo);
+                println!(
+                    "   - {} [pdf: {}]",
+                    d.titolo,
+                    d.chiave_pdf.as_deref().unwrap_or("nessuno")
+                );
             }
             assert!(
                 !documenti.is_empty(),

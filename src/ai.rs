@@ -19,6 +19,15 @@ pub const MODELLO_PREDEFINITO: &str = "opencode-go/deepseek-v4.1-flash";
 /// Limite di caratteri del passaggio inviato.
 pub const MASSIMO_CARATTERI: usize = 3000;
 
+/// Quante sottolineature dell'esame si passano come contesto.
+///
+/// Poche e scelte: il modello deve capire come il corso tratta l'argomento,
+/// non ricevere un libro intero.
+pub const MASSIMO_CONTESTO: usize = 3;
+
+/// Lunghezza massima di una singola sottolineatura nel contesto.
+const CARATTERI_CONTESTO: usize = 220;
+
 /// Esito di una richiesta all'assistente.
 #[derive(Debug, Clone)]
 pub enum Esito {
@@ -57,9 +66,13 @@ impl Assistente {
 
     /// Chiede al modello di spiegare un passaggio nel contesto di un esame.
     ///
+    /// `contesto` sono le sottolineature dell'esame lette da Zotero: danno al
+    /// modello il modo in cui il corso tratta l'argomento, che e' la
+    /// differenza fra una spiegazione generica e una utile.
+    ///
     /// Se c'e' gia' una richiesta in corso non ne parte un'altra: due
     /// processi insieme rallentano tutto e consumano quota per niente.
-    pub fn chiedi(&mut self, modello: &str, esame: &str, passaggio: &str) {
+    pub fn chiedi(&mut self, modello: &str, esame: &str, passaggio: &str, contesto: &[String]) {
         if self.in_corso {
             return;
         }
@@ -72,7 +85,7 @@ impl Assistente {
         } else {
             modello.trim()
         };
-        let prompt = componi_prompt(esame, passaggio);
+        let prompt = componi_prompt(esame, passaggio, contesto);
         self.domanda = passaggio.chars().take(80).collect();
         self.risposta = None;
         self.in_corso = true;
@@ -104,18 +117,47 @@ impl Assistente {
 }
 
 /// Compone la richiesta inviata al modello.
-pub fn componi_prompt(esame: &str, passaggio: &str) -> String {
+pub fn componi_prompt(esame: &str, passaggio: &str, contesto: &[String]) -> String {
     let esame = if esame.trim().is_empty() {
         "questo esame"
     } else {
         esame.trim()
     };
     let estratto = accorcia(passaggio);
-    format!(
+    let mut prompt = format!(
         "Sto preparando l'esame di {esame}. Spiegami in italiano, in modo chiaro e \
          concreto, questo passaggio dei miei testi. Massimo 120 parole, niente \
          premesse e niente ripetizioni.\n\n«{estratto}»"
-    )
+    );
+
+    // Le sottolineature dicono come il corso tratta l'argomento: senza,
+    // la spiegazione e' corretta ma scollegata dal programma.
+    let righe: Vec<String> = contesto
+        .iter()
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .take(MASSIMO_CONTESTO)
+        .map(|t| format!("- {}", taglia(t, CARATTERI_CONTESTO)))
+        .collect();
+    if !righe.is_empty() {
+        prompt.push_str(
+            "\n\nNel corso ho sottolineato questo, tienine conto:\n",
+        );
+        prompt.push_str(&righe.join("\n"));
+    }
+    prompt
+}
+
+/// Taglia un testo a un confine di parola, senza segnale di taglio.
+fn taglia(testo: &str, massimo: usize) -> String {
+    if testo.chars().count() <= massimo {
+        return testo.to_string();
+    }
+    let tagliato: String = testo.chars().take(massimo).collect();
+    match tagliato.rfind(' ') {
+        Some(pos) => tagliato[..pos].to_string(),
+        None => tagliato,
+    }
 }
 
 /// Taglia un testo troppo lungo a un confine di parola.
@@ -210,16 +252,33 @@ mod test {
 
     #[test]
     fn il_prompt_contiene_esame_e_passaggio() {
-        let p = componi_prompt("Storia romana", "La riforma di Tiberio Gracco");
+        let p = componi_prompt("Storia romana", "La riforma di Tiberio Gracco", &[]);
         assert!(p.contains("Storia romana"));
         assert!(p.contains("La riforma di Tiberio Gracco"));
         assert!(p.contains("italiano"));
     }
 
     #[test]
+    fn le_sottolineature_entrano_nel_prompt() {
+        let contesto = vec![
+            "La riforma agraria del 133 a.C.".to_string(),
+            "   ".to_string(),
+            "Il conflitto con il senato".to_string(),
+        ];
+        let p = componi_prompt("Storia romana", "Tiberio Gracco", &contesto);
+        assert!(p.contains("La riforma agraria del 133 a.C."));
+        assert!(p.contains("Il conflitto con il senato"));
+        // Il contesto e' limitato: non deve diventare un libro.
+        let molte: Vec<String> = (0..10).map(|i| format!("sottolineatura {i}")).collect();
+        let p = componi_prompt("Storia", "passaggio", &molte);
+        assert!(p.contains("sottolineatura 2"));
+        assert!(!p.contains("sottolineatura 3"));
+    }
+
+    #[test]
     fn un_passaggio_lungo_viene_tagliato() {
         let lungo = "parola ".repeat(MASSIMO_CARATTERI);
-        let p = componi_prompt("Storia", &lungo);
+        let p = componi_prompt("Storia", &lungo, &[]);
         assert!(p.contains("[…]"));
         assert!(p.chars().count() < lungo.chars().count());
     }

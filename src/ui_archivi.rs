@@ -60,6 +60,15 @@ pub fn sezione_archivi(ui: &mut egui::Ui, stato: &mut StatoApp) {
         .size(12.0)
         .color(TENUE),
     );
+
+    // Il caricamento su NotebookLM si fa a mano: aprire il file nel file
+    // system evita di doverlo cercare.
+    let percorso = archivi::percorso_notebooklm_esame(&stato.nome_esame());
+    if percorso.exists() && ui.small_button("📂 Mostra il file da caricare").clicked() {
+        if let Err(e) = archivi::rivela_file(&percorso) {
+            stato.avviso = Some(e);
+        }
+    }
 }
 
 /// Pulsante e spiegazione delle carte per Anki.
@@ -89,6 +98,13 @@ fn sezione_anki(ui: &mut egui::Ui, stato: &mut StatoApp) {
         .size(12.0)
         .color(TENUE),
     );
+
+    let percorso = archivi::percorso_anki(&stato.nome_esame());
+    if percorso.exists() && ui.small_button("📂 Mostra il file per Anki").clicked() {
+        if let Err(e) = archivi::rivela_file(&percorso) {
+            stato.avviso = Some(e);
+        }
+    }
 }
 
 /// Genera il pacchetto NotebookLM dell'esame corrente.

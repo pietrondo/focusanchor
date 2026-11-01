@@ -72,9 +72,16 @@ nel programma e nessuna dipendenza HTTP aggiuntiva.
 - Menu degli esami (le collezioni Zotero) e dei testi al loro interno, con
   **lettura ricorsiva**: i materiali nelle sottocollezioni contano come parte
   dell'esame.
+- Ogni testo ha il pulsante **📄**: apre direttamente il PDF in Zotero
+  (`zotero://open-pdf/library/items/…`). Il vecchio `↗` selezionava l'item
+  nella libreria, cioè un click per poi aprirlo lo stesso.
+- **🔄** rifà lo snapshot: i file aggiunti in Zotero compaiono subito, senza
+  ricaricare tutto da capo.
 - Rileva il PDF che stai leggendo dalla finestra di Zotero.
 - Avvisa se apri un PDF di un altro esame (cooldown di 15 secondi).
 - Genera una scheda per NotebookLM divisa per esame.
+- Le tue sottolineature dell'esame entrano come contesto nel prompt
+  dell'assistente AI: la spiegazione segue il taglio del corso, non è generica.
 
 **Lettura ad alta voce**
 
@@ -111,7 +118,9 @@ Durante la sessione:
   negli appunti e apre il notebook di quell'esame (se hai salvato il link).
   La incolli nella chat e premi Invio.
 - **Genera scheda per NotebookLM** crea `notebooklm_<esame>.md` con le
-  sottolineature e i tuoi riassunti, da caricare su NotebookLM.
+  sottolineature e i tuoi riassunti, da caricare su NotebookLM. **📂 Mostra il
+  file** lo apre già selezionato in Esplora file, così lo trascini nel
+  notebook senza cercarlo.
 
 L'overlay si apre nell'angolo in basso a destra, così non copre le schede e la
 barra degli strumenti di Zotero. Puoi comunque trascinarlo dove preferisci.

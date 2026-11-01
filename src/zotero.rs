@@ -16,6 +16,8 @@ use std::process::Command;
 pub struct Documento {
     /// Chiave interna dell'oggetto Zotero.
     pub chiave: String,
+    /// Chiave dell'allegato PDF, se il documento ne ha uno.
+    pub chiave_pdf: Option<String>,
     /// Titolo del documento.
     pub titolo: String,
     /// Tipo di oggetto (journalArticle, book, attachment...).
@@ -180,12 +182,27 @@ fn copia_file(sorgente: &Path, destinazione: &Path) -> Result<(), String> {
 /// Apre un oggetto di Zotero con il suo protocollo `zotero://`.
 ///
 /// Permette di portare l'utente dritto al documento selezionato, senza
-/// doverlo cercare a mano nella libreria.
+/// doverlo cercare a mano nella libreria. Il percorso deve includere
+/// `library/`: `zotero://select/items/…` viene ignorato dal gestore di
+/// Zotero (vedi `ZoteroProtocolHandler.mjs`).
 pub fn apri_in_zotero(chiave: &str) -> Result<(), String> {
+    apri_uri(&format!("zotero://select/library/items/{chiave}"))
+}
+
+/// Apre il PDF di un documento, alla prima pagina.
+///
+/// E' l'azione vera dello studio: selezionare il libro nella libreria non
+/// serve a niente, il PDF si deve aprire. La chiave qui e' quella
+/// dell'allegato, non quella dell'item che lo contiene.
+pub fn apri_pdf_in_zotero(chiave_pdf: &str) -> Result<(), String> {
+    apri_uri(&format!("zotero://open-pdf/library/items/{chiave_pdf}"))
+}
+
+/// Lancia un URI con il programma che Windows gli associa.
+fn apri_uri(uri: &str) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
-    let url = format!("zotero://select/items/{chiave}");
     Command::new("cmd")
-        .args(["/C", "start", "", &url])
+        .args(["/C", "start", "", uri])
         .creation_flags(crate::blocker::CREATE_NO_WINDOW)
         .spawn()
         .map(|_| ())

@@ -201,6 +201,18 @@ fn precedente_soglia(nome: &str) -> i32 {
     }
 }
 
+/// Accorcia un testo lungo senza spezzare le parole a meta'.
+pub fn accorcia(testo: &str, massimo: usize) -> String {
+    if testo.chars().count() <= massimo {
+        return testo.to_string();
+    }
+    let tagliato: String = testo.chars().take(massimo).collect();
+    match tagliato.rfind(' ') {
+        Some(pos) => format!("{}…", &tagliato[..pos]),
+        None => format!("{tagliato}…"),
+    }
+}
+
 /// Mostra una notifica di conferma in verde.
 pub fn notifica(ui: &mut egui::Ui, testo: Option<&str>) {
     if let Some(testo) = testo {

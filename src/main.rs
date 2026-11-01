@@ -25,6 +25,7 @@ mod ui_ai;
 mod ui_archivi;
 mod ui_audio;
 mod ui_azioni;
+mod ui_caricamento;
 mod ui_esami;
 mod ui_focus;
 mod ui_sblocco;

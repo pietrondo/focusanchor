@@ -7,7 +7,8 @@
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use chrono::Local;
 
@@ -43,22 +44,33 @@ pub fn nome_file_sicuro(esame: &str) -> String {
 /// Il nome dell'esame finisce nel file: cosi' l'utente ha un file per corso e
 /// non un calderone unico in cui si mescolano cinque materie.
 pub fn nome_file_notebooklm(esame: &str) -> String {
-    let pulito: String = esame
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '_' })
-        .collect();
-    let pulito = pulito.trim_matches('_').to_string();
-    let pulito = if pulito.is_empty() {
-        "Senza_esame".to_string()
-    } else {
-        pulito
-    };
-    format!("notebooklm_{pulito}.md")
+    format!("notebooklm_{}.md", nome_file_sicuro(esame))
 }
 
 /// Percorso del pacchetto NotebookLM per un esame specifico.
 pub fn percorso_notebooklm_esame(esame: &str) -> PathBuf {
     cartella_dati().join(nome_file_notebooklm(esame))
+}
+
+/// Mostra un file nel file system, con il file gia' selezionato.
+///
+/// Serve dopo aver generato il pacchetto NotebookLM o le carte Anki: quei
+/// file vanno caricati a mano su NotebookLM o su Anki, e ritrovarli in una
+/// cartella che nessuno apre mai era il passaggio che faceva perdere piu'
+/// tempo.
+pub fn rivela_file(percorso: &Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    if !percorso.exists() {
+        return Err(format!("{} non esiste ancora.", percorso.display()));
+    }
+    // `explorer` restituisce 1 anche quando fa il suo lavoro: l'esito del
+    // processo non dice niente, quindi si guarda solo se e' partito.
+    Command::new("explorer")
+        .arg(format!("/select,{}", percorso.display()))
+        .creation_flags(crate::blocker::CREATE_NO_WINDOW)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Non riesco ad aprire la cartella: {e}"))
 }
 
 /// Salva un pensiero improvviso con data e ora.
@@ -244,6 +256,18 @@ mod test {
         );
         // Un nome vuoto non deve produrre un file senza nome.
         assert_eq!(nome_file_notebooklm("   "), "notebooklm_Senza_esame.md");
+    }
+
+    #[test]
+    fn il_nome_file_anki_non_contiene_caratteri_vietati() {
+        // Lo stesso nome serve a scrivere e a rileggere le carte: se i due
+        // calcoli divergessero, la carta sparirebbe dalla vista.
+        assert_eq!(nome_file_sicuro("Storia romana"), "Storia_romana");
+        assert_eq!(
+            nome_file_sicuro("Economia e storia 19/10/2026"),
+            "Economia_e_storia_19_10_2026"
+        );
+        assert_eq!(nome_file_sicuro("   "), "Senza_esame");
     }
 
     #[test]
