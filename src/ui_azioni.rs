@@ -6,45 +6,58 @@ use crate::audio::MotoreAudio;
 use crate::state::StatoApp;
 
 /// Pulsanti rapidi sempre a portata di mano durante lo studio.
-pub fn disegna(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut MotoreAudio) {
+///
+/// Un pulsante per riga, a tutta larghezza: con le emoji la larghezza del
+/// testo e' imprevedibile e due colonne sfondavano la finestra.
+pub fn disegna(
+    ui: &mut egui::Ui,
+    stato: &mut StatoApp,
+    audio: &mut MotoreAudio,
+    larghezza: f32,
+) {
+    let misura = egui::vec2(larghezza, 30.0);
+
+    if ui
+        .add(egui::Button::new("🔊 Leggi il testo copiato").min_size(misura))
+        .on_hover_text("Legge ad alta voce quello che hai copiato con Ctrl+C")
+        .clicked()
+    {
+        leggi_testo_copiato(stato, audio);
+    }
+
+    if ui
+        .add(egui::Button::new("📤 Spiega con NotebookLM").min_size(misura))
+        .on_hover_text("Prepara la domanda e apre il notebook dell'esame")
+        .clicked()
+    {
+        spiega_con_notebooklm(stato);
+    }
+
+    if ui
+        .add(egui::Button::new("⚡ S.O.S. Sonnolenza").min_size(misura))
+        .on_hover_text("Reset di 60 secondi: ti alzi e ti muovi")
+        .clicked()
+    {
+        let missione = stato.anti_sonno.avvia_missione();
+        audio.parla(&format!("Missione di un minuto. {missione}"));
+    }
+
     ui.horizontal(|ui| {
+        let meta = ((larghezza - 8.0) / 2.0).max(70.0);
         if ui
-            .button("🔊 Leggi da Zotero")
-            .on_hover_text("Legge il testo copiato con Ctrl+C")
+            .add(egui::Button::new("⏹ Ferma voce").min_size(egui::vec2(meta, 28.0)))
             .clicked()
         {
-            leggi_testo_copiato(stato, audio);
-        }
-        if ui
-            .button("📤 Spiega con NotebookLM")
-            .on_hover_text("Copia una domanda pronta: incollala nella chat di NotebookLM")
-            .clicked()
-        {
-            spiega_con_notebooklm(stato);
-        }
-    });
-    ui.horizontal(|ui| {
-        if ui
-            .button("⚡ S.O.S. Sonnolenza")
-            .on_hover_text("Reset di 60 secondi: ti alzi e ti muovi")
-            .clicked()
-        {
-            let missione = stato.anti_sonno.avvia_missione();
-            audio.parla(&format!("Missione di un minuto. {missione}"));
-        }
-        if ui.button("⏹ Ferma voce").clicked() {
             audio.ferma_voce();
         }
-    });
-    ui.horizontal(|ui| {
-        if ui.button("▶ Apri NotebookLM").clicked() {
-            if let Err(e) = crate::notebooklm::apri_notebooklm() {
-                stato.avviso = Some(e);
-            }
-        }
         let modalita = stato.modalita_audio();
+        let etichetta = match modalita {
+            crate::audio::ModalitaAudio::Spenta => "🎵 Spento",
+            crate::audio::ModalitaAudio::RumoreMarrone => "🎵 Marrone",
+            crate::audio::ModalitaAudio::Binaurale40 => "🎵 40Hz",
+        };
         if ui
-            .button(format!("🎵 {}", modalita.etichetta()))
+            .add(egui::Button::new(etichetta).min_size(egui::vec2(meta, 28.0)))
             .on_hover_text("Cambia il suono di sottofondo")
             .clicked()
         {
@@ -76,8 +89,9 @@ fn leggi_testo_copiato(stato: &mut StatoApp, audio: &mut MotoreAudio) {
 /// Prepara il messaggio da incollare nella chat di NotebookLM.
 ///
 /// E' il passo che l'utente fa gia' a mano: copia un passaggio e chiede
-/// "spiegami meglio". Qui il messaggio viene composto con l'esame giusto e
-/// messo negli appunti, pronto da incollare.
+/// "spiegami meglio". Qui il messaggio viene composto con l'esame giusto,
+/// messo negli appunti, e si apre il notebook di quell'esame se il link e'
+/// stato salvato.
 fn spiega_con_notebooklm(stato: &mut StatoApp) {
     let passaggio = match MotoreAudio::leggi_clipboard() {
         Ok(t) if !t.trim().is_empty() => t,
@@ -92,11 +106,26 @@ fn spiega_con_notebooklm(stato: &mut StatoApp) {
             return;
         }
     };
-    let messaggio = crate::notebooklm::prepara_messaggio(&stato.nome_esame(), &passaggio);
+
+    let esame = stato.nome_esame();
+    let messaggio = crate::notebooklm::prepara_messaggio(&esame, &passaggio);
     match crate::notebooklm::copia_negli_appunti(&messaggio) {
         Ok(()) => {
-            stato.aggiungi_notifica("Domanda copiata: incollala su NotebookLM e premi Invio.");
-            let _ = crate::notebooklm::apri_notebooklm();
+            let link = stato
+                .config
+                .notebook_esami
+                .get(&esame)
+                .filter(|l| !l.trim().is_empty())
+                .cloned();
+            match link {
+                Some(link) => {
+                    let _ = crate::notebooklm::apri(&link);
+                    stato.aggiungi_notifica("Domanda copiata: incollala e premi Invio.");
+                }
+                None => stato.aggiungi_notifica(
+                    "Domanda copiata: incollala nel notebook dell'esame su NotebookLM.",
+                ),
+            }
         }
         Err(e) => stato.avviso = Some(e),
     }

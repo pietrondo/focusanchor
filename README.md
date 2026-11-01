@@ -8,12 +8,12 @@ Nessun server, nessun Electron: un singolo eseguibile Rust con `eframe`/`egui`.
 
 ## Cosa fa
 
-**Doppio scudo anti-distrazione**
+**Scudo anti-distrazione (solo avvisi)**
 
-- Blocca i siti che ti fanno perdere il filo (Reddit, YouTube, X, ecc.)
-  tramite il file `hosts` di Windows, con flush del DNS.
-- Ogni 800 ms controlla la finestra in primo piano: se è un sito vietato la
-  minimizza e te lo dice a voce.
+- Nessun blocco dei siti: l'app **non modifica il file `hosts`** e non chiude
+  le tue finestre. Non serve più avviarla come Amministratore.
+- Ogni 800 ms controlla la finestra in primo piano: se il titolo contiene una
+  delle parole che ti fanno perdere il filo, te lo dice a voce e a schermo.
 
 **Studiare senza addormentarsi**
 
@@ -77,11 +77,15 @@ elevati resta attivo solo il Guardiano Finestre (Livello 2).
 
 Durante la sessione:
 
-- **Leggi da Zotero** legge il testo che hai copiato con `Ctrl+C`.
-- **Spiega con NotebookLM** prepara una domanda pronta con l'esame giusto e
-  la mette negli appunti: la incolli nella chat di NotebookLM e premi Invio.
+- **Leggi il testo copiato** legge ad alta voce quello che hai copiato con `Ctrl+C`.
+- **Spiega con NotebookLM** compone una domanda con l'esame giusto, la mette
+  negli appunti e apre il notebook di quell'esame (se hai salvato il link).
+  La incolli nella chat e premi Invio.
 - **Genera scheda per NotebookLM** crea `notebooklm_<esame>.md` con le
   sottolineature e i tuoi riassunti, da caricare su NotebookLM.
+
+L'overlay si apre nell'angolo in basso a destra, così non copre le schede e la
+barra degli strumenti di Zotero. Puoi comunque trascinarlo dove preferisci.
 
 ## File creati accanto all'eseguibile
 
@@ -98,7 +102,6 @@ Tutto resta sul tuo computer. L'unica cosa che esce è ciò che decidi tu di
 incollare nella chat di NotebookLM.
 
 ## Note sull'evidenza
-
 Il rumore marrone e le tecniche di active recall hanno basi solide. Il
 battimento binaurale a 40 Hz ha prove **miste**: alcuni studi mostrano un
 miglioramento dell'attenzione, altri nessun effetto. È a basso rischio, ma

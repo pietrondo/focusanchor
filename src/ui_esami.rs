@@ -6,8 +6,7 @@
 use std::sync::mpsc::Sender;
 
 use crate::audio::MotoreAudio;
-use crate::blocker::{applica_blocco, Segnale};
-use crate::config::righe_alla_lista;
+use crate::blocker::Segnale;
 use crate::interleaving::Interleaving;
 use crate::state::StatoApp;
 use crate::zotero_query;
@@ -98,7 +97,10 @@ pub fn rileva_pdf_zotero(stato: &mut StatoApp) {
     }
 }
 
-/// Applica il Livello 1 di blocco e avvia la sessione.
+/// Avvia la sessione di studio con i testi spuntati.
+///
+/// Non tocca il file `hosts`: il blocco dei siti e' stato rimosso, quindi non
+/// serve piu' l'avvio come Amministratore.
 pub fn avvia_sessione(
     stato: &mut StatoApp,
     audio: &mut MotoreAudio,
@@ -110,14 +112,6 @@ pub fn avvia_sessione(
     stato.interleaving = Interleaving::nuovo(stato.testi_scelti.clone());
     if stato.testi_scelti.len() >= 2 {
         stato.config.obiettivo = stato.testi_scelti[0].clone();
-    }
-
-    let domini = righe_alla_lista(&stato.testo_domini);
-    if let Err(errore) = applica_blocco(&domini) {
-        stato.avviso = Some(format!(
-            "Livello 1 non attivo ({errore}). E' attivo solo il Guardian Finestre (Livello 2). \
-             Riavvia come Amministratore per bloccare anche i domini."
-        ));
     }
 
     let _ = audio.imposta_modalita(stato.modalita_audio(), stato.config.volume);

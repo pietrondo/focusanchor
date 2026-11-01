@@ -50,8 +50,73 @@ pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
         crate::ui_esami::cambia_esame(stato, nuovo_esame);
     }
 
+    ui.add_space(6.0);
+    sezione_notebook(ui, stato);
+
     ui.add_space(12.0);
     sezione_testi(ui, stato);
+}
+
+/// Link del notebook NotebookLM dell'esame scelto.
+///
+/// Ogni esame ha il suo notebook con i testi caricati: salvando il link una
+/// volta, "NotebookLM" apre direttamente quello invece della pagina iniziale.
+fn sezione_notebook(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    let Some(esame) = stato
+        .esame_scelto
+        .and_then(|id| stato.collezioni.iter().find(|c| c.id == id))
+        .map(|c| c.nome.clone())
+    else {
+        return;
+    };
+
+    // Il campo lavora su una copia: si salva solo se il link e' valido.
+    let salvato = stato
+        .config
+        .notebook_esami
+        .get(&esame)
+        .cloned()
+        .unwrap_or_default();
+    let mut campo = salvato.clone();
+
+    egui::CollapsingHeader::new("📓 Notebook NotebookLM di questo esame")
+        .default_open(salvato.is_empty())
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(
+                    "Incolla il link del notebook dove hai caricato i testi dell'esame. \
+                     Verra' aperto quando premi «NotebookLM» in sessione.",
+                )
+                .size(12.0)
+                .color(TENUE),
+            );
+            egui::TextEdit::singleline(&mut campo)
+                .hint_text("https://notebooklm.google.com/notebook/…")
+                .desired_width(f32::INFINITY)
+                .show(ui);
+            ui.horizontal(|ui| {
+                if ui.button("💾 Salva link").clicked() {
+                    match crate::notebooklm::normalizza_link(&campo) {
+                        Some(link) => {
+                            stato.config.notebook_esami.insert(esame.clone(), link);
+                            stato.salva_configurazione();
+                            stato.aggiungi_notifica("Link del notebook salvato.");
+                        }
+                        None => {
+                            stato.avviso = Some(
+                                "Il link non sembra valido: incolla un indirizzo che inizi con https://"
+                                    .into(),
+                            );
+                        }
+                    }
+                }
+                if !salvato.is_empty() && ui.button("▶ Apri").clicked() {
+                    if let Err(e) = crate::notebooklm::apri(&salvato) {
+                        stato.avviso = Some(e);
+                    }
+                }
+            });
+        });
 }
 
 /// Stato vuoto: nessun esame caricato, con le due azioni in evidenza.

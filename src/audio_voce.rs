@@ -81,8 +81,14 @@ impl MotoreAudio {
     ///
     /// Il testo passa da stdin: niente problemi di quoting con i caratteri
     /// speciali, che sono frequenti negli appunti accademici.
+    ///
+    /// Se la voce e' disattivata non parte nulla: chi studia nel silenzio non
+    /// deve sentirsi comparire delle voci dal rumore di sottofondo.
     pub fn parla_con_velocita(&mut self, testo: &str, velocita: VelocitaVoce) {
         self.ferma_voce();
+        if !self.voce_attiva {
+            return;
+        }
         let testo = testo.trim();
         if testo.is_empty() {
             return;

@@ -20,6 +20,13 @@ pub struct Configurazione {
     pub velocita_voce: String,
     /// Richiamo vocale ogni 15 minuti attivo.
     pub richiamo_vocale: bool,
+    /// Voce attiva: quando e' spenta l'app non parla mai.
+    ///
+    /// Il rumore di sottofondo e la voce escono dallo stesso altoparlante:
+    /// con il rumore acceso, la voce sembra "spuntare" dal rumore. Chi
+    /// preferisce silenzio totale spegne tutto da qui.
+    #[serde(default = "vero")]
+    pub voce_attiva: bool,
     /// Sfide anti-noia a sorpresa attive.
     pub sfide_a_sorpresa: bool,
     /// Domini bloccati nel file `hosts`.
@@ -28,6 +35,13 @@ pub struct Configurazione {
     pub parole_vietate: Vec<String>,
     /// Cartella Zotero personalizzata (vuota = percorso standard).
     pub cartella_zotero: String,
+    /// Link del notebook NotebookLM di ogni esame, per nome.
+    ///
+    /// Ogni esame ha il suo notebook con i testi caricati: salvando il link
+    /// una volta, "Spiega con NotebookLM" apre quello giusto invece della
+    /// pagina iniziale.
+    #[serde(default)]
+    pub notebook_esami: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for Configurazione {
@@ -39,12 +53,19 @@ impl Default for Configurazione {
             volume: 0.35,
             velocita_voce: "Normale".to_string(),
             richiamo_vocale: true,
+            voce_attiva: true,
             sfide_a_sorpresa: true,
             domini_vietati: default_domini(),
             parole_vietate: default_parole(),
             cartella_zotero: String::new(),
+            notebook_esami: std::collections::BTreeMap::new(),
         }
     }
+}
+
+/// Valore di default `true`, usato da serde quando il campo manca.
+fn vero() -> bool {
+    true
 }
 
 /// Domini bloccati per default (social e video che fanno perdere il filo).

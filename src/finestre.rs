@@ -70,6 +70,48 @@ unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
     TRUE
 }
 
+/// Dimensione dello schermo principale, in pixel fisici.
+pub fn schermo() -> (f32, f32) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
+    };
+    unsafe {
+        let larghezza = GetSystemMetrics(SM_CXSCREEN) as f32;
+        let altezza = GetSystemMetrics(SM_CYSCREEN) as f32;
+        (larghezza.max(640.0), altezza.max(480.0))
+    }
+}
+
+/// Area utile dello schermo principale, quella senza la barra delle
+/// applicazioni.
+///
+/// Restituisce `(larghezza, altezza)` in pixel fisici. Se Windows non risponde
+/// si ripiega sull'intero schermo.
+pub fn area_utile() -> (f32, f32) {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SystemParametersInfoW, SPI_GETWORKAREA,
+    };
+    let mut rettangolo = RECT::default();
+    let esito = unsafe {
+        SystemParametersInfoW(
+            SPI_GETWORKAREA,
+            0,
+            Some(&mut rettangolo as *mut _ as *mut core::ffi::c_void),
+            Default::default(),
+        )
+    };
+    if esito.is_err() {
+        return schermo();
+    }
+    let larghezza = (rettangolo.right - rettangolo.left) as f32;
+    let altezza = (rettangolo.bottom - rettangolo.top) as f32;
+    if larghezza < 320.0 || altezza < 240.0 {
+        return schermo();
+    }
+    (larghezza, altezza)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

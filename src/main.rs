@@ -152,6 +152,11 @@ impl AppFocus {
                 DIMENSIONE_OVERLAY[0],
                 DIMENSIONE_OVERLAY[1],
             )));
+            // L'overlay va nell'angolo in basso a destra: in alto coprirebbe
+            // le schede e la barra degli strumenti di Zotero.
+            if let Some(posizione) = posizione_angolo(ctx, DIMENSIONE_OVERLAY) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(posizione));
+            }
         } else {
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
                 egui::WindowLevel::Normal,
@@ -164,9 +169,30 @@ impl AppFocus {
     }
 }
 
+/// Calcola la posizione dell'angolo in basso a destra dello schermo.
+///
+/// `GetSystemMetrics` restituisce pixel fisici mentre egui lavora in punti:
+/// la divisione per `pixels_per_point` tiene conto dello scaling di Windows.
+fn posizione_angolo(ctx: &egui::Context, dimensione: [f32; 2]) -> Option<egui::Pos2> {
+    // Area utile: cosi' la finestra non finisce sotto la barra delle
+    // applicazioni.
+    let (larghezza, altezza) = crate::finestre::area_utile();
+    let scala = ctx.pixels_per_point();
+    if !scala.is_finite() || scala <= 0.0 {
+        return None;
+    }
+    let x = (larghezza / scala - dimensione[0] - 24.0).max(0.0);
+    // La posizione e' dell'angolo esterno, che comprende la barra del titolo:
+    // senza questo margine la finestra scivola sotto la barra delle applicazioni.
+    const BARRA_TITOLO: f32 = 40.0;
+    let y = (altezza / scala - dimensione[1] - BARRA_TITOLO - 16.0).max(0.0);
+    Some(egui::pos2(x, y))
+}
+
 impl eframe::App for AppFocus {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.gestisci_segnali();
+        self.stato.sincronizza_voce(&mut self.audio);
         self.stato.aggiorna_sessione(&mut self.audio);
         self.stato.aggiorna_interleaving(&mut self.audio);
         self.stato.aggiorna_voce(&mut self.audio);

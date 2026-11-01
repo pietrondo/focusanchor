@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use crate::blocker::{minimizza_finestra_attiva, titolo_finestra_attiva, Segnale};
+use crate::blocker::{titolo_finestra_attiva, Segnale};
 use crate::finestre::SUFFISSO_ZOTERO;
 use crate::zotero::appartiene_all_esame;
 
@@ -103,9 +103,10 @@ fn controlla_una_volta(
         return;
     }
 
-    // 1) Distrazione vera e propria: si minimizza subito.
+    // 1) Finestra che fa perdere il filo: si avvisa, senza chiudere nulla.
+    //    Il blocco dei siti e' stato tolto su richiesta: l'app non deve
+    //    minimizzare le finestre dell'utente, solo ricordargli l'obiettivo.
     if crate::blocker::titolo_vietato(&titolo, parole) {
-        minimizza_finestra_attiva();
         let _ = canale.send(Segnale::Distrazione(titolo));
         return;
     }

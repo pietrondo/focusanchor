@@ -198,6 +198,11 @@ impl StatoApp {
         salva_configurazione(&self.config);
     }
 
+    /// Allinea la voce del motore audio con l'interruttore in configurazione.
+    pub fn sincronizza_voce(&self, audio: &mut MotoreAudio) {
+        audio.voce_attiva = self.config.voce_attiva;
+    }
+
     /// Elabora lo stato della voce, trasformandolo in una notifica.
     pub fn aggiorna_voce(&mut self, audio: &mut MotoreAudio) {
         while let Some(evento) = audio.stato_voce() {

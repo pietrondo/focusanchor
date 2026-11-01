@@ -72,6 +72,14 @@ pub fn sezione_audio(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut Motore
     });
 
     ui.add_space(2.0);
+    ui.checkbox(&mut stato.config.voce_attiva, "Voce attiva");
+    ui.label(
+        egui::RichText::new(
+            "Se senti delle voci sopra il rumore sono gli avvisi vocali: spegnili qui.",
+        )
+        .size(12.0)
+        .color(TENUE),
+    );
     ui.checkbox(
         &mut stato.config.richiamo_vocale,
         "Avviso vocale ogni 15 minuti",
@@ -80,6 +88,32 @@ pub fn sezione_audio(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut Motore
         &mut stato.config.sfide_a_sorpresa,
         "Sfide Anti-Noia a sorpresa",
     );
+
+    sezione_parole(ui, stato);
+}
+
+/// Parole che fanno perdere il filo: servono solo agli avvisi.
+fn sezione_parole(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    egui::CollapsingHeader::new("🔔 Parole che fanno perdere il filo")
+        .default_open(false)
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(
+                    "Quando una finestra con queste parole va in primo piano, l'app te lo ricorda. \
+                     Non chiude e non blocca niente: una parola per riga.",
+                )
+                .size(12.0)
+                .color(TENUE),
+            );
+            egui::TextEdit::multiline(&mut stato.testo_parole)
+                .desired_rows(5)
+                .desired_width(f32::INFINITY)
+                .show(ui);
+            if ui.button("💾 Salva").clicked() {
+                stato.salva_configurazione();
+                stato.aggiungi_notifica("Parole salvate.");
+            }
+        });
 }
 
 /// Applica una modalita' audio al motore, segnalando gli errori.

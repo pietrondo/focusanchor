@@ -5,9 +5,7 @@ use eframe::egui;
 use crate::anti_sleep::Sfida;
 use crate::audio::MotoreAudio;
 use crate::state::StatoApp;
-use crate::ui::{
-    avviso, badge, notifica, scheda, ACCENTO, ARANCIO, GIALLO, TENUE, VERDE, VIOLA,
-};
+use crate::ui::{avviso, badge, notifica, ACCENTO, ARANCIO, GIALLO, TENUE, VERDE, VIOLA};
 
 /// Disegna l'overlay compatto della sessione attiva.
 pub fn disegna(ctx: &egui::Context, stato: &mut StatoApp, audio: &mut MotoreAudio) {
@@ -17,43 +15,47 @@ pub fn disegna(ctx: &egui::Context, stato: &mut StatoApp, audio: &mut MotoreAudi
         return;
     }
 
-    egui::CentralPanel::default().show(ctx, |ui| {
-        intestazione(ui, stato);
-        ui.add_space(6.0);
+    egui::CentralPanel::default()
+        .frame(
+            egui::Frame::none()
+                .fill(crate::ui::SFONDO)
+                .inner_margin(egui::Margin::symmetric(14.0, 10.0)),
+        )
+        .show(ctx, |ui| {
+            intestazione(ui, stato);
+            ui.add_space(2.0);
+            countdown(ui, stato);
+            ui.add_space(6.0);
 
-        // La larghezza si calcola fuori dallo ScrollArea: dentro potrebbe
-        // essere infinita.
-        let l = crate::ui::larghezza_schede(ui);
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                countdown(ui, stato);
-                ui.add_space(6.0);
+            // La larghezza si ricava dalla finestra vera: `available_width`
+            // dentro i pannelli annidati non e' affidabile e i pulsanti
+            // finivano fuori dal bordo destro.
+            let larghezza = (ctx.screen_rect().width() - 2.0 * 14.0 - 12.0).max(160.0);
 
-                if stato.interleaving.attivo() {
-                    scheda(ui, l, "🔁", "Alternanza testi", VERDE, |ui| {
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    if stato.interleaving.attivo() {
                         pannello_interleaving(ui, stato);
-                    });
-                }
+                        ui.separator();
+                    }
 
-                scheda(ui, l, "⚡", "Azioni rapide", ARANCIO, |ui| {
-                    crate::ui_azioni::disegna(ui, stato, audio);
-                });
+                    crate::ui_azioni::disegna(ui, stato, audio, larghezza);
+                    ui.add_space(4.0);
 
-                scheda(ui, l, "🎯", "Micro-task", VIOLA, |ui| {
                     pannello_task(ui, stato, audio);
-                });
+                    ui.add_space(4.0);
 
-                scheda(ui, l, "💭", "Parcheggio pensieri", ACCENTO, |ui| {
                     parcheggio_pensieri(ui, stato);
-                });
+                    ui.add_space(6.0);
 
-                crate::ui_sblocco::disegna(ui, stato, audio, ctx);
-                notifica(ui, stato.notifica_attiva());
-                avviso(ui, &stato.avviso);
-                ui.add_space(6.0);
-            });
-    });
+                    crate::ui_sblocco::disegna(ui, stato, audio, ctx);
+
+                    notifica(ui, stato.notifica_attiva());
+                    avviso(ui, &stato.avviso);
+                    ui.add_space(6.0);
+                });
+        });
 }
 
 /// Obiettivo in evidenza e stato dei punti.
@@ -166,8 +168,8 @@ fn pannello_task(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut MotoreAudi
     if stato.task.e_completato() {
         let premio = stato.task.completa().unwrap_or(0);
         stato.xp.aggiungi(premio);
+        // Solo un beep: un annuncio vocale a ogni blocco diventa rumore.
         audio.beep();
-        audio.parla(&format!("Bel lavoro! Hai preso {premio} punti."));
         stato.aggiungi_notifica(&format!("+{premio} XP! Micro-task completato."));
         return;
     }
@@ -180,7 +182,6 @@ fn pannello_task(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut MotoreAudi
                 .clicked()
             {
                 stato.task.avvia(minuti);
-                audio.parla(&format!("Ok, {minuti} minuti di studio. Parti!"));
             }
         }
     });

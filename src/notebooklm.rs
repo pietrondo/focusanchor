@@ -13,9 +13,6 @@ use std::process::Command;
 
 use crate::blocker::CREATE_NO_WINDOW;
 
-/// Indirizzo di NotebookLM.
-pub const URL_NOTEBOOKLM: &str = "https://notebooklm.google.com";
-
 /// Lunghezza massima del testo riportato nel messaggio.
 ///
 /// Oltre questa soglia il messaggio diventa illeggibile e NotebookLM non
@@ -67,14 +64,44 @@ pub fn copia_negli_appunti(testo: &str) -> Result<(), String> {
         .map_err(|e| format!("Non riesco a copiare il messaggio: {e}"))
 }
 
-/// Apre NotebookLM nel browser predefinito.
-pub fn apri_notebooklm() -> Result<(), String> {
+/// Apre un indirizzo nel browser predefinito.
+pub fn apri(url: &str) -> Result<(), String> {
+    // Solo http/https: un link incollato non deve poter lanciare altro.
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("Il link del notebook deve iniziare con https://".into());
+    }
     Command::new("cmd")
-        .args(["/C", "start", "", URL_NOTEBOOKLM])
+        .args(["/C", "start", "", url])
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("Non riesco ad aprire NotebookLM: {e}"))
+        .map_err(|e| format!("Non riesco ad aprire il browser: {e}"))
+}
+
+/// Normalizza il link incollato dall'utente.
+///
+/// Chi copia dalla barra degli indirizzi puo' incollare senza schema o con
+/// parametri di tracking: si tiene solo l'essenziale.
+pub fn normalizza_link(link: &str) -> Option<String> {
+    let link = link.trim();
+    if link.is_empty() {
+        return None;
+    }
+    let completo = if link.starts_with("http://") || link.starts_with("https://") {
+        link.to_string()
+    } else if link.contains("notebooklm.google.com") {
+        format!("https://{link}")
+    } else {
+        return None;
+    };
+    // Via i parametri di tracking: rendono il link fragile e illeggibile.
+    let senza_parametri = completo
+        .split('?')
+        .next()
+        .unwrap_or(&completo)
+        .trim_end_matches('/')
+        .to_string();
+    Some(senza_parametri)
 }
 
 #[cfg(test)]
@@ -108,5 +135,22 @@ mod test {
         let m = prepara_messaggio("", "un passaggio");
         assert!(m.contains("questo esame"));
         assert!(m.contains("un passaggio"));
+    }
+
+    #[test]
+    fn il_link_viene_normalizzato() {
+        // Con parametri di tracking: si tagliano.
+        assert_eq!(
+            normalizza_link("https://notebooklm.google.com/notebook/abc123?authuser=0").unwrap(),
+            "https://notebooklm.google.com/notebook/abc123"
+        );
+        // Senza schema ma con il dominio giusto: si aggiunge https.
+        assert_eq!(
+            normalizza_link("notebooklm.google.com/notebook/abc123").unwrap(),
+            "https://notebooklm.google.com/notebook/abc123"
+        );
+        // Roba che non e' un link: rifiutata.
+        assert!(normalizza_link("ciao").is_none());
+        assert!(normalizza_link("   ").is_none());
     }
 }

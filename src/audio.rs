@@ -82,6 +82,8 @@ pub struct MotoreAudio {
     sink_sottofondo: Option<Sink>,
     /// Modalita' attualmente in riproduzione.
     modalita: ModalitaAudio,
+    /// Vero se la voce e' abilitata.
+    pub voce_attiva: bool,
     /// Sender per i messaggi di stato della voce.
     pub(crate) tx: Sender<Voce>,
     /// Receiver per i messaggi di stato della voce.
@@ -99,6 +101,7 @@ impl MotoreAudio {
             handle: None,
             sink_sottofondo: None,
             modalita: ModalitaAudio::Spenta,
+            voce_attiva: true,
             tx,
             rx,
             processi: Arc::new(Mutex::new(Vec::new())),

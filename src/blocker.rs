@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowThreadProcessId, ShowWindow, SW_MINIMIZE,
+    GetForegroundWindow, GetWindowThreadProcessId,
 };
 
 /// Percorso del file `hosts` di Windows.
@@ -32,34 +32,6 @@ pub enum Segnale {
     /// Su Zotero e' aperto un PDF di un altro esame.
     ContestoZotero(String),
 }
-/// Errore restituito dalle operazioni sul file `hosts`.
-#[derive(Debug)]
-pub enum ErroreHosts {
-    /// Il file `hosts` non e' leggibile o scrivibile (manca spesso il permesso admin).
-    AccessoNegato(String),
-    /// Errore generico di I/O.
-    Io(String),
-}
-
-impl std::fmt::Display for ErroreHosts {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ErroreHosts::AccessoNegato(m) => write!(f, "{m}"),
-            ErroreHosts::Io(m) => write!(f, "{m}"),
-        }
-    }
-}
-
-impl From<std::io::Error> for ErroreHosts {
-    fn from(e: std::io::Error) -> Self {
-        match e.kind() {
-            std::io::ErrorKind::PermissionDenied => {
-                ErroreHosts::AccessoNegato(e.to_string())
-            }
-            _ => ErroreHosts::Io(e.to_string()),
-        }
-    }
-}
 
 /// Percorso del file `hosts` come `PathBuf`.
 pub fn percorso_hosts() -> PathBuf {
@@ -77,7 +49,12 @@ pub fn flush_dns() {
         .status();
 }
 
-/// Rimuove dal file `hosts` il blocco di FocusAnchor, se presente.
+/// Rimuove dal file `hosts` un eventuale blocco lasciato da versioni
+/// precedenti di FocusAnchor.
+///
+/// Il blocco dei siti non fa piu' parte dell'app: resta solo questa pulizia,
+/// perche' chi ha usato le vecchie versioni puo' avere ancora il blocco
+/// scritto nel file di sistema.
 ///
 /// Funzione sicura: non entra mai in panic, cosi' puo' essere chiamata
 /// anche dal panic hook di sicurezza.
@@ -109,7 +86,11 @@ pub fn rimuovi_blocco(contenuto: &str) -> String {
     risultato
 }
 
-/// Costruisce il testo del blocco da inserire in fondo al file `hosts`.
+/// Costruisce il testo del blocco usato dalle vecchie versioni.
+///
+/// Serve solo ai test: il blocco non viene piu' scritto nel file `hosts`,
+/// ma la pulizia deve saper riconoscere il formato per rimuoverlo.
+#[cfg(test)]
 pub fn costruisci_blocco(domini: &[String]) -> String {
     let mut blocco = String::new();
     blocco.push_str(MARCA_INIZIO);
@@ -125,24 +106,6 @@ pub fn costruisci_blocco(domini: &[String]) -> String {
     blocco.push_str(MARCA_FINE);
     blocco.push('\n');
     blocco
-}
-
-/// Aggiunge in fondo al file `hosts` il blocco che reindirizza i domini vietati.
-///
-/// Restituisce `Err` se il file non e' scrivibile (tipicamente serve l'avvio
-/// come Amministratore): in quel caso l'applicazione continua con il solo
-/// Livello 2 (Guardiano Finestre).
-pub fn applica_blocco(domini: &[String]) -> Result<(), ErroreHosts> {
-    let percorso = percorso_hosts();
-    let contenuto = fs::read_to_string(&percorso)?;
-    let mut nuovo = rimuovi_blocco(&contenuto);
-    if !nuovo.is_empty() && !nuovo.ends_with('\n') {
-        nuovo.push('\n');
-    }
-    nuovo.push_str(&costruisci_blocco(domini));
-    fs::write(&percorso, nuovo)?;
-    flush_dns();
-    Ok(())
 }
 
 /// Legge il titolo della finestra in primo piano.
@@ -175,17 +138,11 @@ pub fn finestra_è_di_focus_anchor() -> bool {
     processo != 0 && processo == std::process::id()
 }
 
-/// Minimizza la finestra in primo piano, se esiste.
-pub fn minimizza_finestra_attiva() {
-    unsafe {
-        let hwnd = GetForegroundWindow();
-        if !hwnd.is_invalid() {
-            let _ = ShowWindow(hwnd, SW_MINIMIZE);
-        }
-    }
-}
-
-/// Verifica se il titolo della finestra corrisponde a una parola chiave vietata.
+/// Verifica se il titolo della finestra corrisponde a una parola chiave
+/// che fa perdere il filo.
+///
+/// Non serve a chiudere nulla: l'app si limita ad avvisare, perche' il blocco
+/// dei siti e' stato rimosso.
 pub fn titolo_vietato(titolo: &str, parole: &[String]) -> bool {
     let minuscolo = titolo.to_lowercase();
     parole
