@@ -17,6 +17,8 @@ var FocusAnchor = {
 	ultimo: null,
 	ultimaScrittura: 0,
 	_timerPannello: null,
+	_inPausa: false,
+	_esame: "",
 
 	async startup({ id, rootURI }) {
 		this.id = id;
@@ -62,13 +64,17 @@ var FocusAnchor = {
 				icon: icona,
 			},
 			bodyXHTML: `
-				<div class="focusanchor-pane" style="padding: 2px 4px 6px; font-size: 12px;">
-					<div id="focusanchor-stato" style="margin-bottom: 6px; opacity: 0.85;">App chiusa</div>
-					<div style="display: flex; gap: 6px; flex-wrap: wrap;">
-						<button id="focusanchor-avvia" type="button">▶ Avvia</button>
-						<button id="focusanchor-pausa" type="button">⏸ Pausa</button>
-						<button id="focusanchor-ferma" type="button">⏹ Ferma</button>
-						<button id="focusanchor-ripasso" type="button">🔁 Ripasso</button>
+				<div class="focusanchor-pane">
+					<div class="focusanchor-riga">
+						<span id="focusanchor-punto"></span>
+						<span id="focusanchor-stato">App chiusa</span>
+					</div>
+					<div id="focusanchor-dettaglio"></div>
+					<div class="focusanchor-griglia">
+						<button id="focusanchor-avvia" type="button">Avvia</button>
+						<button id="focusanchor-pausa" type="button">Pausa</button>
+						<button id="focusanchor-ferma" type="button">Ferma</button>
+						<button id="focusanchor-ripasso" type="button">Ripasso</button>
 					</div>
 				</div>`,
 			onRender: (dati) => this.disegna(dati),
@@ -81,18 +87,70 @@ var FocusAnchor = {
 		});
 	},
 
-	/** Collega i pulsanti e tiene aggiornato lo stato. */
+	/** Collega i pulsanti, dà loro una forma e tiene aggiornato lo stato. */
 	disegna({ body, item }) {
-		const esame = this.esameDi(item);
-		const avvia = body.querySelector("#focusanchor-avvia");
-		const pausa = body.querySelector("#focusanchor-pausa");
-		const ferma = body.querySelector("#focusanchor-ferma");
-		const ripasso = body.querySelector("#focusanchor-ripasso");
+		this._body = body;
+		this._esame = this.esameDi(item);
+
+		const cerca = (id) => body.querySelector("#" + id);
+		const avvia = cerca("focusanchor-avvia");
+		const pausa = cerca("focusanchor-pausa");
+		const ferma = cerca("focusanchor-ferma");
+		const ripasso = cerca("focusanchor-ripasso");
 		if (!avvia) {
 			return;
 		}
-		avvia.onclick = () => this.invia("avvia", esame);
-		pausa.onclick = () => this.invia("pausa");
+
+		// Lo stile si mette qui e non in CSS: il pannello è dentro il documento
+		// di Zotero e deve adattarsi al tema chiaro o scuro senza file esterni.
+		const riga = body.querySelector(".focusanchor-riga");
+		if (riga) {
+			riga.style.display = "flex";
+			riga.style.alignItems = "center";
+			riga.style.gap = "8px";
+			riga.style.fontSize = "13px";
+			riga.style.lineHeight = "1.3";
+		}
+		const punto = cerca("focusanchor-punto");
+		if (punto) {
+			punto.style.width = "8px";
+			punto.style.height = "8px";
+			punto.style.borderRadius = "50%";
+			punto.style.background = "#9aa0a6";
+			punto.style.flex = "0 0 auto";
+			punto.style.display = "inline-block";
+		}
+		const dettaglio = cerca("focusanchor-dettaglio");
+		if (dettaglio) {
+			dettaglio.style.fontSize = "11px";
+			dettaglio.style.opacity = "0.65";
+			dettaglio.style.margin = "2px 0 8px";
+			dettaglio.style.minHeight = "14px";
+		}
+		const griglia = body.querySelector(".focusanchor-griglia");
+		if (griglia) {
+			griglia.style.display = "grid";
+			griglia.style.gridTemplateColumns = "1fr 1fr";
+			griglia.style.gap = "6px";
+		}
+		for (const [elemento, primario] of [
+			[avvia, true],
+			[pausa, false],
+			[ferma, false],
+			[ripasso, false],
+		]) {
+			elemento.style.width = "100%";
+			elemento.style.padding = "5px 8px";
+			elemento.style.fontSize = "12px";
+			elemento.style.borderRadius = "4px";
+			elemento.style.border = "1px solid rgba(128,128,128,0.35)";
+			elemento.style.background = "transparent";
+			elemento.style.color = "inherit";
+			elemento.style.fontWeight = primario ? "600" : "400";
+		}
+
+		avvia.onclick = () => this.invia("avvia", this._esame);
+		pausa.onclick = () => this.invia(this._inPausa ? "riprendi" : "pausa");
 		ferma.onclick = () => this.invia("ferma");
 		ripasso.onclick = () => this.invia("ripasso");
 
@@ -103,34 +161,105 @@ var FocusAnchor = {
 		this._timerPannello = setInterval(() => this.aggiorna(body), 2000);
 	},
 
-	/** Riga di stato letta dal battito dell'app. */
+	/** Riga di stato e stato dei pulsanti, letti dal battito dell'app. */
 	async aggiorna(body) {
-		const el = body.querySelector("#focusanchor-stato");
-		if (!el) {
+		const cerca = (id) => body.querySelector("#" + id);
+		const stato = cerca("focusanchor-stato");
+		const dettaglio = cerca("focusanchor-dettaglio");
+		const punto = cerca("focusanchor-punto");
+		const avvia = cerca("focusanchor-avvia");
+		const pausa = cerca("focusanchor-pausa");
+		const ferma = cerca("focusanchor-ferma");
+		const ripasso = cerca("focusanchor-ripasso");
+		if (!stato) {
 			return;
 		}
+
+		const abilita = (elemento, attivo) => {
+			if (!elemento) {
+				return;
+			}
+			elemento.disabled = !attivo;
+			elemento.style.opacity = attivo ? "1" : "0.4";
+			elemento.style.cursor = attivo ? "pointer" : "default";
+		};
+
+		let dati = null;
 		try {
 			const testo = await Zotero.File.getContentsAsync(
 				PathUtils.join(Zotero.DataDirectory.dir, "focusanchor_vivo.json")
 			);
-			const dati = JSON.parse(testo);
+			dati = JSON.parse(testo);
 			// Un battito fermo significa app chiusa, non "stato sconosciuto".
 			if (Date.now() - (dati.aggiornato || 0) > 6000) {
-				el.textContent = "App chiusa — premi Avvia";
-				return;
+				dati = null;
 			}
-			if (!dati.inSessione) {
-				el.textContent = "Nessuna sessione";
-				return;
-			}
-			const minuti = Math.floor((dati.secondi || 0) / 60);
-			const secondi = String((dati.secondi || 0) % 60).padStart(2, "0");
-			const testa = dati.inPausa ? "In pausa" : "In corso";
-			const esame = dati.esame ? " · " + dati.esame : "";
-			el.textContent = `${testa} · ${minuti}:${secondi}${esame}`;
 		} catch (e) {
-			el.textContent = "App chiusa — premi Avvia";
+			dati = null;
 		}
+
+		if (!dati) {
+			this._inPausa = false;
+			stato.textContent = "App chiusa";
+			dettaglio.textContent = "Premi Avvia: la apro io.";
+			if (punto) {
+				punto.style.background = "#9aa0a6";
+			}
+			if (pausa) {
+				pausa.textContent = "Pausa";
+			}
+			abilita(avvia, true);
+			abilita(pausa, false);
+			abilita(ferma, false);
+			abilita(ripasso, true);
+			return;
+		}
+
+		this._inPausa = !!dati.inPausa;
+		const carte = dati.daRipassare || 0;
+		if (ripasso) {
+			ripasso.textContent = carte > 0 ? `Ripasso (${carte})` : "Ripasso";
+		}
+		if (pausa) {
+			pausa.textContent = this._inPausa ? "Riprendi" : "Pausa";
+		}
+
+		if (!dati.inSessione) {
+			stato.textContent = "Nessuna sessione";
+			if (punto) {
+				punto.style.background = "#9aa0a6";
+			}
+			if (!dati.esamiCaricati) {
+				dettaglio.textContent =
+					"Apri FocusAnchor e premi «Carica esami da Zotero» una volta.";
+			} else {
+				dettaglio.textContent = this._esame
+					? "Pronto su " + this._esame
+					: "Scegli un documento di un esame";
+			}
+			abilita(avvia, true);
+			abilita(pausa, false);
+			abilita(ferma, false);
+			return;
+		}
+
+		const minuti = Math.floor((dati.secondi || 0) / 60);
+		const secondi = String((dati.secondi || 0) % 60).padStart(2, "0");
+		stato.textContent = `${this._inPausa ? "In pausa" : "In corso"} · ${minuti}:${secondi}`;
+		if (punto) {
+			punto.style.background = this._inPausa ? "#f0a30a" : "#2ecc71";
+		}
+		const parti = [];
+		if (dati.esame) {
+			parti.push(dati.esame);
+		}
+		if (carte > 0) {
+			parti.push(`${carte} carte da ripassare`);
+		}
+		dettaglio.textContent = parti.join(" · ");
+		abilita(avvia, false);
+		abilita(pausa, true);
+		abilita(ferma, true);
 	},
 
 	/** Collezione di primo livello dell'item: e' l'esame per l'app. */

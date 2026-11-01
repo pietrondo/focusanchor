@@ -82,6 +82,10 @@ pub fn battito(stato: &crate::state::StatoApp) {
         esame: String,
         #[serde(rename = "daRipassare")]
         da_ripassare: usize,
+        /// Vero se l'app ha caricato gli esami da Zotero: senza, «Avvia» non
+        /// puo' sapere quali testi mettere in rotazione.
+        #[serde(rename = "esamiCaricati")]
+        esami_caricati: bool,
         aggiornato: u64,
     }
 
@@ -98,6 +102,7 @@ pub fn battito(stato: &crate::state::StatoApp) {
         secondi: stato.secondi_sessione(),
         esame: stato.nome_esame(),
         da_ripassare: stato.memoria.scadute(&oggi).len(),
+        esami_caricati: !stato.collezioni.is_empty(),
         aggiornato: chrono::Local::now().timestamp_millis() as u64,
     };
     if let Ok(json) = serde_json::to_string(&battito) {
