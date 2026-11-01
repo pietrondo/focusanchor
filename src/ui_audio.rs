@@ -72,6 +72,12 @@ pub fn sezione_audio(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut Motore
     });
 
     ui.add_space(2.0);
+    sezione_voce(ui, stato);
+    sezione_parole(ui, stato);
+}
+
+/// Interruttori della voce e degli avvisi.
+fn sezione_voce(ui: &mut egui::Ui, stato: &mut StatoApp) {
     ui.checkbox(&mut stato.config.voce_attiva, "Voce attiva");
     ui.label(
         egui::RichText::new(
@@ -88,8 +94,6 @@ pub fn sezione_audio(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut Motore
         &mut stato.config.sfide_a_sorpresa,
         "Sfide Anti-Noia a sorpresa",
     );
-
-    sezione_parole(ui, stato);
 }
 
 /// Parole che fanno perdere il filo: servono solo agli avvisi.

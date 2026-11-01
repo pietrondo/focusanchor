@@ -50,6 +50,11 @@ pub struct StatoApp {
     pub evidenziazioni: Vec<Evidenziazione>,
     /// Percorso dello snapshot del database Zotero.
     pub snapshot_zotero: Option<PathBuf>,
+    /// Testo in modifica nel campo del link NotebookLM.
+    ///
+    /// Deve stare nello stato: un buffer locale verrebbe ricreato a ogni
+    /// frame e l'incolla sparirebbe subito.
+    pub campo_notebook: String,
     /// Testo del campo "parcheggio pensieri".
     pub campo_pensiero: String,
     /// Messaggio di conferma mostrato dopo aver salvato un pensiero.
@@ -89,6 +94,7 @@ impl StatoApp {
             interleaving: Interleaving::nuovo(Vec::new()),
             evidenziazioni: Vec::new(),
             snapshot_zotero: None,
+            campo_notebook: String::new(),
             campo_pensiero: String::new(),
             conferma: None,
             avviso: None,

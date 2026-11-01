@@ -17,6 +17,11 @@ pub fn cambia_esame(stato: &mut StatoApp, nuovo: Option<i64>) {
     stato.documenti_esame.clear();
     stato.testi_scelti.clear();
     stato.evidenziazioni.clear();
+    // Il campo del link si riallinea all'esame scelto.
+    stato.campo_notebook = nuovo
+        .and_then(|id| stato.collezioni.iter().find(|c| c.id == id))
+        .and_then(|c| stato.config.notebook_esami.get(&c.nome).cloned())
+        .unwrap_or_default();
 
     let (Some(id), Some(snapshot)) = (nuovo, stato.snapshot_zotero.clone()) else {
         return;

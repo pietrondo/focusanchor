@@ -283,3 +283,42 @@ mod test {
         stato.termina_sessione();
     }
 }
+
+#[cfg(test)]
+mod test_link {
+    use super::*;
+    use crate::zotero::Collezione;
+    use eframe::egui;
+
+    /// Il campo del link NotebookLM non deve perdere il testo fra un frame e
+    /// l'altro: era il difetto per cui l'incolla spariva subito.
+    #[test]
+    fn il_campo_del_link_mantiene_il_testo() {
+        let ctx = egui::Context::default();
+        let mut stato = StatoApp::nuovo();
+        stato.collezioni = vec![Collezione {
+            id: 1,
+            nome: "Storia romana".to_string(),
+            documenti: 3,
+            sottocollezioni: 0,
+        }];
+        stato.esame_scelto = Some(1);
+        let link = "https://notebooklm.google.com/notebook/abc123";
+        stato.campo_notebook = link.to_string();
+
+        // Tre frame come in uso reale: il testo deve restare identico.
+        for _ in 0..3 {
+            let mut inp = egui::RawInput::default();
+            inp.screen_rect = Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(620.0, 860.0),
+            ));
+            let _ = ctx.run(inp, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    crate::ui_zotero::sezione_esame(ui, &mut stato);
+                });
+            });
+        }
+        assert_eq!(stato.campo_notebook, link);
+    }
+}
