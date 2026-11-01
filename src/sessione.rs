@@ -152,6 +152,17 @@ impl StatoApp {
         })
     }
 
+    /// Secondi trascorsi nella sessione in corso, pause escluse.
+    ///
+    /// Serve al pannello dentro Zotero: li' deve comparire il tempo, non una
+    /// promessa che l'app sta contando.
+    pub fn secondi_sessione(&self) -> u64 {
+        self.sessione
+            .as_ref()
+            .map(|s| s.trascorso().as_secs())
+            .unwrap_or(0)
+    }
+
     /// Mette la sessione in pausa per una durata fissa.
     ///
     /// La pausa pianificata e' diversa dallo sblocco d'emergenza: serve a

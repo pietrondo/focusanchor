@@ -166,6 +166,22 @@ copiato nel profilo non funziona (l'ho provato: il gestore degli addon ignora
 il file finché non passa dall'interfaccia). Senza estensione l'app funziona
 lo stesso, solo meno precisa.
 
+## Comandare tutto da Zotero
+
+Con l'estensione installata, FocusAnchor si comanda **dal pannello nella barra
+laterale dell'item** (a destra del PDF, sotto le note): ▶ Avvia, ⏸ Pausa,
+⏹ Ferma, 🔁 Ripasso.
+
+- **Avvia** parte sull'esame a cui appartiene il documento aperto (la
+  collezione di primo livello), quindi non devi scegliere niente.
+- Se l'app è spenta il plugin **la avvia da solo** e le lascia il comando in
+  attesa: non devi aprire nient'altro.
+- La riga di stato dice cosa sta succedendo (`In corso · 12:34 · storia
+  romana`), letta dal battito che l'app scrive ogni due secondi.
+
+Il canale è un file nella cartella dati di Zotero (`focusanchor_comando.json`):
+niente porte aperte, niente server, niente chiavi.
+
 ## File creati accanto all'eseguibile
 
 | File | Contenuto |

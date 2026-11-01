@@ -10,6 +10,8 @@ mod audio;
 mod audio_voce;
 mod blocker;
 mod carte;
+mod comandi_zotero;
+mod comando;
 mod config;
 mod finestre;
 mod guardia;
@@ -59,13 +61,17 @@ const DIMENSIONE_OVERLAY: [f32; 2] = [420.0, 380.0];
 const DIMENSIONE_CONFIGURAZIONE: [f32; 2] = [620.0, 860.0];
 
 /// Struttura principale dell'applicazione.
-struct AppFocus {
-    stato: StatoApp,
-    audio: audio::MotoreAudio,
+pub(crate) struct AppFocus {
+    pub(crate) stato: StatoApp,
+    pub(crate) audio: audio::MotoreAudio,
     canale: Receiver<Segnale>,
-    mittente: Sender<Segnale>,
+    pub(crate) mittente: Sender<Segnale>,
     /// Ricorda se la finestra e' gia' in modalita' overlay.
-    overlay_attivo: bool,
+    pub(crate) overlay_attivo: bool,
+    /// Ultimo battito scritto per l'estensione Zotero.
+    pub(crate) ultimo_battito: std::time::Instant,
+    /// Ultimo comando eseguito, per non ripeterlo.
+    pub(crate) ultimo_comando: Option<String>,
 }
 
 impl AppFocus {
@@ -78,6 +84,8 @@ impl AppFocus {
             canale,
             mittente,
             overlay_attivo: false,
+            ultimo_battito: std::time::Instant::now(),
+            ultimo_comando: None,
         }
     }
 
@@ -205,6 +213,7 @@ fn posizione_angolo(ctx: &egui::Context, dimensione: [f32; 2]) -> Option<egui::P
 impl eframe::App for AppFocus {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.gestisci_segnali();
+        self.comandi(ctx);
         self.stato.sincronizza_voce(&mut self.audio);
         self.stato.ai.aggiorna();
         self.stato.aggiorna_sessione(&mut self.audio);
