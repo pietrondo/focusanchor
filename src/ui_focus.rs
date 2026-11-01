@@ -76,12 +76,8 @@ fn intestazione(ui: &mut egui::Ui, stato: &StatoApp) {
         }
     });
     // Quanto manca all'appello piu' vicino: cambia il peso di ogni sessione.
-    if let Some((esame, giorni)) = crate::ui_storico::prossimo_esame(stato) {
-        let testo = if giorni == 0 {
-            format!("📅 {esame}: oggi")
-        } else {
-            format!("📅 {esame}: {} giorni", giorni)
-        };
+    if let Some((giorni, esami)) = crate::ui_storico::prossimo_esame(stato) {
+        let testo = crate::ui_storico::testo_conto(giorni, &esami);
         ui.label(egui::RichText::new(testo).size(13.0).color(ARANCIO));
     }
 }

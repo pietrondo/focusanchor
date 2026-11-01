@@ -58,18 +58,87 @@ pub fn sezione_storico(ui: &mut egui::Ui, stato: &mut StatoApp) {
     }
 }
 
-/// Giorni che mancano all'appello piu' vicino, per l'intestazione.
-pub fn prossimo_esame(stato: &StatoApp) -> Option<(String, i64)> {
-    stato
-        .config
-        .esami
-        .iter()
-        .filter_map(|(esame, info)| {
-            let giorni = storico::giorni_alla_data(&info.data_esame)?;
-            if giorni < 0 {
-                return None;
+/// Appello piu' vicino: quanti giorni mancano e quali esami cadono quel giorno.
+///
+/// Piu' esami sullo stesso appello sono la norma a dicembre: mostrare solo il
+/// primo nome (spesso il piu' lungo di Zotero) nasconderebbe gli altri.
+pub fn prossimo_esame(stato: &StatoApp) -> Option<(i64, Vec<String>)> {
+    let mut giorni_min: Option<i64> = None;
+    let mut nomi: Vec<String> = Vec::new();
+    for (esame, info) in &stato.config.esami {
+        let Some(giorni) = storico::giorni_alla_data(&info.data_esame) else {
+            continue;
+        };
+        if giorni < 0 {
+            continue;
+        }
+        match giorni_min {
+            None => {
+                giorni_min = Some(giorni);
+                nomi.push(esame.clone());
             }
-            Some((esame.clone(), giorni))
-        })
-        .min_by_key(|(_, giorni)| *giorni)
+            Some(minimo) if giorni < minimo => {
+                giorni_min = Some(giorni);
+                nomi.clear();
+                nomi.push(esame.clone());
+            }
+            Some(minimo) if giorni == minimo => nomi.push(esame.clone()),
+            _ => {}
+        }
+    }
+    giorni_min.map(|giorni| (giorni, nomi))
+}
+
+/// Riga del conto alla rovescia per l'intestazione della sessione.
+pub fn testo_conto(giorni: i64, esami: &[String]) -> String {
+    let quando = match giorni {
+        0 => "oggi".to_string(),
+        1 => "domani".to_string(),
+        n => format!("fra {n} giorni"),
+    };
+    match esami {
+        [] => format!("📅 Appello {quando}"),
+        [unico] => format!("📅 {}: {quando}", crate::ui::accorcia(unico, 30)),
+        molti => format!("📅 {} esami {quando}", molti.len()),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::config::InfoEsame;
+
+    fn esame(data: &str) -> InfoEsame {
+        InfoEsame {
+            data_esame: data.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn piu_esami_lo_stesso_giorno_contano_insieme() {
+        let data = (chrono::Local::now().date_naive() + chrono::Duration::days(44))
+            .format("%Y-%m-%d")
+            .to_string();
+        let mut stato = StatoApp::nuovo();
+        stato.config.esami.clear();
+        stato.config.esami.insert("Storia romana".into(), esame(&data));
+        stato.config.esami.insert("Letteratura".into(), esame(&data));
+        // Un appello gia' passato non deve diventare "il piu' vicino".
+        stato.config.esami.insert("Vecchio".into(), esame("2020-01-01"));
+
+        let (giorni, nomi) = prossimo_esame(&stato).expect("appello");
+        assert_eq!(giorni, 44);
+        assert_eq!(nomi.len(), 2);
+    }
+
+    #[test]
+    fn la_riga_del_conto_alla_rovescia_e_leggibile() {
+        assert!(testo_conto(0, &[]).contains("oggi"));
+        assert!(testo_conto(1, &["Storia".into()]).contains("domani"));
+        // Con piu' esami si conta, senza tirarsi dietro il nome piu' lungo.
+        let tre: Vec<String> = ["A", "B", "C"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(testo_conto(44, &tre), "📅 3 esami fra 44 giorni");
+        assert_eq!(testo_conto(44, &["Storia romana".into()]), "📅 Storia romana: fra 44 giorni");
+    }
 }
