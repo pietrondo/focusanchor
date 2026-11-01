@@ -7,7 +7,7 @@ use eframe::egui;
 use crate::audio::MotoreAudio;
 use crate::blocker::Segnale;
 use crate::state::{StatoApp, DURATA_MAXIMA};
-use crate::ui::{avviso, barra_xp, notifica, scheda, ACCENTO, ARANCIO, TENUE, VERDE};
+use crate::ui::{avviso, barra_xp, notifica, scheda, ACCENTO, ARANCIO, GIALLO, TENUE, VERDE};
 
 /// Disegna la modalita' Configurazione (prima della sessione).
 pub fn disegna(
@@ -52,6 +52,10 @@ pub fn disegna(
 
                     scheda(ui, l, "📂", "I tuoi file", TENUE, |ui| {
                         crate::ui_archivi::sezione_archivi(ui, stato);
+                    });
+
+                    scheda(ui, l, "🔁", "Ripasso", GIALLO, |ui| {
+                        crate::ui_ripasso::sezione_ripasso(ui, stato);
                     });
 
                     scheda(ui, l, "📈", "Storico", VERDE, |ui| {

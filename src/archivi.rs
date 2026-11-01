@@ -131,6 +131,9 @@ pub fn salva_riassunto(materia: &str, passaggio: &str, risposta: &str) -> Result
     // La carta per Anki si scrive solo se c'e' una domanda.
     if !passaggio.trim().is_empty() {
         salva_carta_anki(&materia, passaggio, risposta)?;
+        // La stessa domanda entra anche nella memoria dell'esame: il ripasso
+        // dilazionato vive dentro l'app, il file per Anki resta un'uscita.
+        crate::carte::aggiungi(materia, passaggio, risposta)?;
     }
     Ok(())
 }

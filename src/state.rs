@@ -44,6 +44,14 @@ pub struct StatoApp {
     pub tempo_documenti: std::collections::BTreeMap<String, u32>,
     /// Ultimo istante del campionamento della finestra in primo piano.
     pub ultimo_campione: Instant,
+    /// Carte di ripasso dell'esame scelto.
+    pub memoria: crate::carte::MemoriaEsame,
+    /// Esame a cui appartiene `memoria`.
+    pub memoria_esame: String,
+    /// Carta in ripasso adesso: indice dentro `memoria.carte`.
+    pub ripasso_indice: Option<usize>,
+    /// Vero quando la risposta della carta e' stata mostrata.
+    pub ripasso_risposta_visibile: bool,
     /// Modulo anti-noia e anti-sonno.
     pub anti_sonno: AntiSonno,
     /// Micro-task di studio in corso.
@@ -112,6 +120,10 @@ impl StatoApp {
             xp_a_inizio: (0, 0),
             tempo_documenti: std::collections::BTreeMap::new(),
             ultimo_campione: Instant::now(),
+            memoria: Default::default(),
+            memoria_esame: String::new(),
+            ripasso_indice: None,
+            ripasso_risposta_visibile: false,
             anti_sonno: AntiSonno::nuovo(sfide),
             task: crate::task::GestoreTask::nuovo(),
             ai: crate::ai::Assistente::nuovo(),

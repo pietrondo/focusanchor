@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "name": "FocusAnchor",
+  "version": "1.0.0",
+  "description": "Dice a FocusAnchor quale documento di Zotero stai leggendo, così sa dove sei senza indovinare dal titolo della finestra.",
+  "author": "FocusAnchor",
+  "homepage_url": "https://github.com/pietrondo/focusanchor",
+  "applications": {
+    "zotero": {
+      "id": "focusanchor@locale",
+      "strict_min_version": "7.0"
+    }
+  }
+}

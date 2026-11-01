@@ -90,7 +90,16 @@ impl StatoApp {
             return;
         }
         let finestra = crate::finestre::titolo_in_primo_piano();
-        if let Some(chiave) = classifica(&finestra, &self.documenti_esame) {
+        // Prima l'estensione, che sa la chiave esatta del documento; il titolo
+        // della finestra resta il ripiego per chi non la installa.
+        let da_estensione = crate::zotero_attivo::leggi_attivo(&self.config.cartella_zotero).and_then(|attivo| {
+            crate::zotero_attivo::classifica_attivo(&attivo, &self.documenti_esame)
+                // Se la chiave non e' fra i documenti dell'esame, il titolo che
+                // l'estensione riporta e' comunque piu' affidabile della finestra.
+                .or_else(|| classifica(&attivo.titolo, &self.documenti_esame))
+        });
+        let chiave = da_estensione.or_else(|| classifica(&finestra, &self.documenti_esame));
+        if let Some(chiave) = chiave {
             *self.tempo_documenti.entry(chiave).or_insert(0) += passato.as_secs() as u32;
         }
     }
@@ -137,6 +146,27 @@ mod test {
         assert!(classifica("Nuova scheda - Google Chrome", &documenti).is_none());
         // Titoli troppo corti non devono combaciare con niente.
         assert!(classifica("Appunti", &documenti).is_none());
+    }
+
+    #[test]
+    fn l_estensione_riconosce_il_documento_dalla_chiave() {
+        let documenti = vec![documento("Manuale di storia romana")];
+        let attivo = crate::zotero_attivo::Attivo {
+            chiave: "PDFKEY12".to_string(),
+            chiave_padre: "ABCD1234".to_string(),
+            titolo: "Manuale di storia romana".to_string(),
+        };
+        assert_eq!(
+            crate::zotero_attivo::classifica_attivo(&attivo, &documenti).as_deref(),
+            Some("Manuale di storia romana")
+        );
+        // Una chiave di un altro esame non attribuisce niente.
+        let estraneo = crate::zotero_attivo::Attivo {
+            chiave: "ZZZZ9999".to_string(),
+            chiave_padre: "YYYY8888".to_string(),
+            titolo: "Altro".to_string(),
+        };
+        assert!(crate::zotero_attivo::classifica_attivo(&estraneo, &documenti).is_none());
     }
 
     #[test]

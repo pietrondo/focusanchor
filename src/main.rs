@@ -9,6 +9,7 @@ mod archivi;
 mod audio;
 mod audio_voce;
 mod blocker;
+mod carte;
 mod config;
 mod finestre;
 mod guardia;
@@ -29,6 +30,7 @@ mod ui_azioni;
 mod ui_caricamento;
 mod ui_esami;
 mod ui_focus;
+mod ui_ripasso;
 mod ui_sblocco;
 mod ui_scheda;
 mod ui_setup;
@@ -37,6 +39,7 @@ mod ui_sfida;
 mod ui_zotero;
 mod xp;
 mod zotero;
+mod zotero_attivo;
 mod zotero_query;
 
 #[cfg(test)]

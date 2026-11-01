@@ -7,7 +7,12 @@ parcheggio_pensieri.txt
 riassunto_studio.md
 pronto_per_notebooklm.md
 notebooklm_*.md
+anki_*.txt
+esame_*.json
 zotero_snapshot/
+
+# Estensione Zotero: si ricostruisce con plugin/build.ps1.
+plugin/focusanchor.xpi
 
 # Tooling locale degli agenti.
 .engram/

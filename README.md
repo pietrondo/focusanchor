@@ -125,14 +125,58 @@ Durante la sessione:
 L'overlay si apre nell'angolo in basso a destra, così non copre le schede e la
 barra degli strumenti di Zotero. Puoi comunque trascinarlo dove preferisci.
 
+## Il ciclo di studio, in un posto solo
+
+L'app non è un timer con sei comandi: è un ciclo che si ripete per ogni esame.
+
+1. **Materiale** — gli esami sono le collezioni Zotero, i testi sono i
+   documenti. Il tempo che passi su ciascuno viene misurato dalla finestra in
+   primo piano e finisce nello storico.
+2. **Studio** — la sessione: timer, pausa vera, guardia anti-distrazione,
+   lettura ad alta voce.
+3. **Verifica** — le domande a tradimento chiedono di spiegare un passaggio del
+   testo che stai leggendo. La tua risposta è il materiale della fase dopo.
+4. **Ripasso** — ogni risposta diventa una carta in `esame_<nome>.json` e torna
+   dentro l'app nei giorni giusti (ripetizione dilazionata). Non serve aprire
+   Anki: il giro studio → dubbio → ripasso resta in una finestra sola.
+5. **Stato** — risposte date, ore per documento, testi contro riassunti, giorni
+   all'appello: tutto nel riquadro *Storico*.
+
+Il file per Anki resta e si può esportare (`anki_<esame>.txt`), ma è un'uscita,
+non il posto dove ripassi.
+
+## Estensione Zotero (opzionale)
+
+L'app riconosce il documento che stai leggendo dal titolo della finestra, e
+sbaglia: la finestra tronca i titoli lunghi e un PDF aperto in una seconda
+finestra non si vede. `plugin/` contiene una piccola estensione che scrive la
+**chiave esatta** dell'item aperto in `<cartella Zotero>/focusanchor_attivo.json`.
+
+Installazione (una volta):
+
+```powershell
+.\plugin\build.ps1                 # crea plugin/focusanchor.xpi
+```
+
+Poi in Zotero: **Strumenti → Componenti aggiuntivi → ingranaggio → Install
+Add-on From File…** e scegli `plugin/focusanchor.xpi`.
+
+Va installata a mano: su Zotero 10 il caricamento automatico di un `.xpi`
+copiato nel profilo non funziona (l'ho provato: il gestore degli addon ignora
+il file finché non passa dall'interfaccia). Senza estensione l'app funziona
+lo stesso, solo meno precisa.
+
 ## File creati accanto all'eseguibile
 
 | File | Contenuto |
 | --- | --- |
 | `config.json` | Impostazioni e liste dei domini bloccati |
 | `parcheggio_pensieri.txt` | Idee fuori tema salvate durante lo studio |
-| `riassunto_studio.md` | Risposte alle domande a tradimento |
+| `riassunto_studio.md` | Risposte alle domande a tradimento (leggibile a occhio) |
+| `esame_<nome>.json` | Carte di ripasso di quell'esame, con le scadenze |
+| `anki_<esame>.txt` | Le stesse carte, in formato tabulato per Anki |
 | `notebooklm_<esame>.md` | Materiale pronto per NotebookLM |
+| `storico.json` | Sessioni concluse, XP e tempo per documento |
 
 ## Privacy
 
@@ -159,9 +203,15 @@ non è una bacchetta magica: se ti distrae, spegnilo.
 | `audio.rs` / `audio_voce.rs` | Sottofondo procedurale e sintesi vocale |
 | `suono.rs` | Generatori audio (rumore, binaurale, beep) |
 | `zotero.rs` / `zotero_query.rs` | Snapshot e query su Zotero |
+| `zotero_attivo.rs` | Legge cosa dice l'estensione Zotero |
+| `tempo.rs` | Tempo per documento dalla finestra in primo piano |
+| `carte.rs` | Carte di ripasso e ripetizione dilazionata |
+| `storico.rs` | Sessioni concluse e statistiche |
+| `ai.rs` | Assistente via `opencode run` |
 | `notebooklm.rs` | Ponte verso NotebookLM |
 | `task.rs` / `xp.rs` | Micro-task e punti |
 | `ui*.rs` | Interfaccia |
+| `plugin/` | Estensione Zotero (manifest, bootstrap, build) |
 
 ## Test
 
