@@ -86,6 +86,11 @@ pub fn battito(stato: &crate::state::StatoApp) {
         /// puo' sapere quali testi mettere in rotazione.
         #[serde(rename = "esamiCaricati")]
         esami_caricati: bool,
+        /// Ultimo comando eseguito: e' la prova che il pannello e' arrivato.
+        #[serde(rename = "ultimoComando")]
+        ultimo_comando: String,
+        /// Ultima notifica o avviso, per non farlo vedere solo nell'app.
+        messaggio: String,
         aggiornato: u64,
     }
 
@@ -103,6 +108,12 @@ pub fn battito(stato: &crate::state::StatoApp) {
         esame: stato.nome_esame(),
         da_ripassare: stato.memoria.scadute(&oggi).len(),
         esami_caricati: !stato.collezioni.is_empty(),
+        ultimo_comando: stato.ultimo_comando.clone(),
+        messaggio: stato
+            .avviso
+            .clone()
+            .or_else(|| stato.notifica_attiva().map(|testo| testo.to_string()))
+            .unwrap_or_default(),
         aggiornato: chrono::Local::now().timestamp_millis() as u64,
     };
     if let Ok(json) = serde_json::to_string(&battito) {

@@ -17,6 +17,7 @@ var FocusAnchor = {
 	ultimo: null,
 	ultimaScrittura: 0,
 	_timerPannello: null,
+	erroreAvvio: null,
 	_inPausa: false,
 	_esame: "",
 
@@ -243,7 +244,9 @@ var FocusAnchor = {
 		if (!dati) {
 			this._inPausa = false;
 			stato.textContent = "App chiusa";
-			dettaglio.textContent = "Premi Avvia: la apro io.";
+			// Se l'avvio e' fallito lo dico qui: un pulsante che non fa niente
+			// senza spiegazione e' peggio di un pulsante assente.
+			dettaglio.textContent = this.erroreAvvio || "Premi Avvia: la apro io.";
 			if (punto) {
 				punto.style.background = "#9aa0a6";
 			}
@@ -370,7 +373,9 @@ var FocusAnchor = {
 
 		try {
 			await Zotero.Utilities.Internal.exec(eseguibile, []);
+			this.erroreAvvio = null;
 		} catch (e) {
+			this.erroreAvvio = "Non riesco ad avviare l'app: " + e;
 			Zotero.debug("FocusAnchor: avvio fallito: " + e);
 		}
 	},

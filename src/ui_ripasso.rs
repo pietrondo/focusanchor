@@ -1,8 +1,9 @@
-//! Pannello di ripasso: le carte scadute oggi, una alla volta, dentro l'app.
+//! Pannello di ripasso: le carte scadute, una alla volta.
 //!
-//! Prima questo passaggio avveniva in Anki, cioe' in un altro programma: il
-//! ciclo studio → dubbio → ripasso si spezzava ogni volta che si cambiava
-//! finestra. Qui la carta nasce dalla domanda a tradimento e torna da sola.
+//! Lo stesso flusso serve due posti: il riquadro nel setup (dove vedi quante
+//! carte hai) e l'overlay durante la sessione (dove il ripasso serve davvero).
+//! La carta e i suoi pulsanti stanno in `carta_attuale`, cosi' i due punti
+//! d'ingresso non si possono scollare.
 
 use eframe::egui;
 
@@ -10,7 +11,7 @@ use crate::carte::{self, Giudizio};
 use crate::state::StatoApp;
 use crate::ui::{ACCENTO, BORDO, GIALLO, TENUE, VERDE};
 
-/// Riquadro delle carte di ripasso dell'esame scelto.
+/// Riquadro completo: quante carte hai e quante scadono oggi.
 pub fn sezione_ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
     stato.sincronizza_memoria();
     let oggi = carte::oggi();
@@ -45,7 +46,7 @@ pub fn sezione_ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
         return;
     }
 
-    let Some(indice) = stato.ripasso_indice else {
+    if stato.ripasso_indice.is_none() {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("🔁 Inizia il ripasso").strong())
@@ -57,8 +58,43 @@ pub fn sezione_ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
             stato.ripasso_risposta_visibile = false;
         }
         return;
-    };
+    }
+    carta_attuale(ui, stato, &oggi);
+}
 
+/// Versione per l'overlay: compare solo se c'e' qualcosa da ripassare.
+///
+/// Durante lo studio il ripasso non deve rubare spazio quando non serve, ma
+/// deve essere li' nel momento in cui una carta scade.
+pub fn ripasso_rapido(ui: &mut egui::Ui, stato: &mut StatoApp, larghezza: f32) {
+    stato.sincronizza_memoria();
+    let oggi = carte::oggi();
+    if stato.ripasso_indice.is_none() && stato.memoria.scadute(&oggi).is_empty() {
+        return;
+    }
+    ui.add_space(6.0);
+    if stato.ripasso_indice.is_none() {
+        let quante = stato.memoria.scadute(&oggi).len();
+        if ui
+            .add(
+                egui::Button::new(format!("🔁 {quante} carte da ripassare"))
+                    .min_size(egui::vec2(larghezza, 30.0)),
+            )
+            .clicked()
+        {
+            stato.ripasso_indice = stato.memoria.prossima_scaduta(&oggi, None);
+            stato.ripasso_risposta_visibile = false;
+        }
+        return;
+    }
+    carta_attuale(ui, stato, &oggi);
+}
+
+/// La carta in corso: domanda, risposta e i tre giudizi.
+fn carta_attuale(ui: &mut egui::Ui, stato: &mut StatoApp, oggi: &str) {
+    let Some(indice) = stato.ripasso_indice else {
+        return;
+    };
     // Si copia subito: il prestito su `memoria` non deve sopravvivere alla
     // chiusura della carta, perche' dopo si modifica lo stato.
     let Some((domanda, risposta)) = stato
@@ -94,7 +130,7 @@ pub fn sezione_ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
                         .color(TENUE),
                 );
                 egui::ScrollArea::vertical()
-                    .max_height(160.0)
+                    .max_height(150.0)
                     .show(ui, |ui| {
                         ui.label(egui::RichText::new(&risposta).size(14.0).color(ACCENTO));
                     });
@@ -123,7 +159,7 @@ pub fn sezione_ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
                 .add(egui::Button::new(etichetta).min_size(egui::vec2(meta, 34.0)))
                 .clicked()
             {
-                giudica(stato, indice, giudizio, &oggi);
+                giudica(stato, indice, giudizio, oggi);
             }
         }
     });

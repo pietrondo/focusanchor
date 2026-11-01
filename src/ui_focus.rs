@@ -46,6 +46,8 @@ pub fn disegna(ctx: &egui::Context, stato: &mut StatoApp, audio: &mut MotoreAudi
 
                     crate::ui_ai::mostra_risposta(ui, stato);
 
+                    crate::ui_ripasso::ripasso_rapido(ui, stato, larghezza);
+
                     pannello_task(ui, stato, audio);
                     ui.add_space(4.0);
 

@@ -52,6 +52,8 @@ pub struct StatoApp {
     pub ripasso_indice: Option<usize>,
     /// Vero quando la risposta della carta e' stata mostrata.
     pub ripasso_risposta_visibile: bool,
+    /// Ultimo comando arrivato da Zotero, per mostrarlo nel pannello.
+    pub ultimo_comando: String,
     /// Modulo anti-noia e anti-sonno.
     pub anti_sonno: AntiSonno,
     /// Micro-task di studio in corso.
@@ -124,6 +126,7 @@ impl StatoApp {
             memoria_esame: String::new(),
             ripasso_indice: None,
             ripasso_risposta_visibile: false,
+            ultimo_comando: String::new(),
             anti_sonno: AntiSonno::nuovo(sfide),
             task: crate::task::GestoreTask::nuovo(),
             ai: crate::ai::Assistente::nuovo(),

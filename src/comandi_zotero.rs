@@ -28,6 +28,7 @@ impl crate::AppFocus {
             return;
         }
         self.ultimo_comando = Some(comando.id.clone());
+        self.stato.ultimo_comando = comando.comando.clone();
         comando::consuma(&self.stato.config.cartella_zotero);
         self.esegui_comando(comando, ctx);
     }
