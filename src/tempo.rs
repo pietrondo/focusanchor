@@ -90,14 +90,20 @@ impl StatoApp {
             return;
         }
         let finestra = crate::finestre::titolo_in_primo_piano();
-        // Prima l'estensione, che sa la chiave esatta del documento; il titolo
-        // della finestra resta il ripiego per chi non la installa.
-        let da_estensione = crate::zotero_attivo::leggi_attivo(&self.config.cartella_zotero).and_then(|attivo| {
-            crate::zotero_attivo::classifica_attivo(&attivo, &self.documenti_esame)
-                // Se la chiave non e' fra i documenti dell'esame, il titolo che
-                // l'estensione riporta e' comunque piu' affidabile della finestra.
-                .or_else(|| classifica(&attivo.titolo, &self.documenti_esame))
-        });
+        // L'estensione sa la chiave esatta del documento, ma va interrogata
+        // solo quando Zotero ha il fuoco: il suo lettore resta "corrente"
+        // anche mentre navighi altrove, e accrediteremmo tempo a chi non c'e'.
+        let in_zotero = finestra.trim_end().ends_with(crate::finestre::SUFFISSO_ZOTERO);
+        let da_estensione = if in_zotero {
+            crate::zotero_attivo::leggi_attivo(&self.config.cartella_zotero).and_then(|attivo| {
+                crate::zotero_attivo::classifica_attivo(&attivo, &self.documenti_esame)
+                    // Se la chiave non e' fra i documenti dell'esame, il titolo
+                    // che l'estensione riporta resta piu' affidabile della finestra.
+                    .or_else(|| classifica(&attivo.titolo, &self.documenti_esame))
+            })
+        } else {
+            None
+        };
         let chiave = da_estensione.or_else(|| classifica(&finestra, &self.documenti_esame));
         if let Some(chiave) = chiave {
             *self.tempo_documenti.entry(chiave).or_insert(0) += passato.as_secs() as u32;

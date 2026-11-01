@@ -40,8 +40,10 @@ pub fn percorso_attivo(cartella_config: &str) -> Option<PathBuf> {
 /// La freschezza conta: con Zotero chiuso il file resta li' e direbbe una
 /// bugia su cosa stai guardando.
 pub fn leggi_attivo(cartella_config: &str) -> Option<Attivo> {
-    /// Oltre questo silenzio si considera l'informazione vecchia.
-    const FRESCHEZZA: std::time::Duration = std::time::Duration::from_secs(30);
+    /// Oltre questo silenzio si considera l'informazione vecchia. Il plugin
+    /// riscrive ogni quindici secondi anche a parita' di contenuto, quindi il
+    /// margine copre un paio di giri persi.
+    const FRESCHEZZA: std::time::Duration = std::time::Duration::from_secs(45);
 
     let percorso = percorso_attivo(cartella_config)?;
     let scritto = fs::metadata(&percorso).ok()?.modified().ok()?;

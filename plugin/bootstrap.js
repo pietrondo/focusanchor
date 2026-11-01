@@ -87,12 +87,22 @@ var FocusAnchor = {
 		try {
 			const dati = this.leggi();
 			const testo = JSON.stringify(dati);
-			// Niente scritture inutili: il file cambia solo quando cambia il fuoco.
-			if (testo === this.ultimo) {
+			// Si riscrive anche quando non cambia niente, ogni 15 secondi:
+			// l'app considera vecchio un file fermo, e un documento aperto
+			// per un'ora smetterebbe di essere riconosciuto.
+			const fermo = Date.now() - (this.ultimaScrittura || 0) > 15000;
+			if (testo === this.ultimo && !fermo) {
 				return;
 			}
 			this.ultimo = testo;
-			const percorso = Zotero.DataDirectory.dir + "/focusanchor_attivo.json";
+			this.ultimaScrittura = Date.now();
+			// `PathUtils.join` e' obbligatorio: concatenare a mano produce
+			// percorsi misti (`C:\.../file.json`) che Gecko rifiuta con
+			// NS_ERROR_FILE_UNRECOGNIZED_PATH.
+			const percorso = PathUtils.join(
+				Zotero.DataDirectory.dir,
+				"focusanchor_attivo.json"
+			);
 			await Zotero.File.putContentsAsync(percorso, testo);
 		} catch (e) {
 			Zotero.debug("FocusAnchor: scrittura fallita: " + e);
