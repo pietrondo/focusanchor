@@ -1,0 +1,13 @@
+# File generati a runtime: non vanno versionati.
+target/
+
+# Dati personali di studio e configurazione locale.
+config.json
+parcheggio_pensieri.txt
+riassunto_studio.md
+pronto_per_notebooklm.md
+notebooklm_*.md
+zotero_snapshot/
+
+# Tooling locale degli agenti.
+.engram/
