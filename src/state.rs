@@ -32,6 +32,11 @@ pub struct StatoApp {
     pub guardia: Option<Guardia>,
     /// Punti XP e grado di concentrazione.
     pub xp: PuntiXp,
+    /// XP e distrazioni all'inizio della sessione in corso.
+    ///
+    /// Servono a scrivere nello storico il guadagno della sessione e non il
+    /// totale di sempre, che verrebbe sommato una seconda volta.
+    pub xp_a_inizio: (i32, u32),
     /// Modulo anti-noia e anti-sonno.
     pub anti_sonno: AntiSonno,
     /// Micro-task di studio in corso.
@@ -97,6 +102,7 @@ impl StatoApp {
             sessione: None,
             guardia: None,
             xp,
+            xp_a_inizio: (0, 0),
             anti_sonno: AntiSonno::nuovo(sfide),
             task: crate::task::GestoreTask::nuovo(),
             ai: crate::ai::Assistente::nuovo(),

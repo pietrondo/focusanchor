@@ -106,6 +106,9 @@ impl StatoApp {
     pub fn avvia_sessione(&mut self, mittente: &Sender<Segnale>) {
         let durata = Duration::from_secs(self.config.durata_minuti as u64 * 60);
         self.sessione = Some(Sessione::nuova(durata, self.config.obiettivo.clone()));
+        // Il punto di partenza degli XP: lo storico registra il guadagno
+        // della sessione, non il totale accumulato da sempre.
+        self.xp_a_inizio = (self.xp.punti, self.xp.distrazioni);
         let parole = crate::config::righe_alla_lista(&self.testo_parole);
         // La guardia deve sapere quali testi appartengono all'esame scelto.
         self.guardia = Some(Guardia::avvia(parole, self.testi_scelti.clone(), mittente.clone()));
@@ -117,14 +120,9 @@ impl StatoApp {
         if let Some(s) = self.sessione.take() {
             let minuti = (s.trascorso().as_secs() / 60) as u32;
             if minuti >= 1 {
-                crate::storico::registra(crate::storico::SessioneRegistrata {
-                    data: crate::storico::adesso(),
-                    esame: self.nome_esame(),
-                    minuti,
-                    xp: self.xp.punti,
-                    distrazioni: self.xp.distrazioni,
-                    blocchi: self.task.completati,
-                });
+                if let Some(record) = self.sessione_da_registrare(minuti) {
+                    crate::storico::registra(record);
+                }
             }
         }
         if let Some(mut guardia) = self.guardia.take() {
@@ -132,6 +130,23 @@ impl StatoApp {
         }
         crate::blocker::ripristina_hosts();
         crate::blocker::flush_dns();
+    }
+
+    /// Costruisce la riga di storico di una sessione appena conclusa.
+    ///
+    /// XP e distrazioni sono la differenza rispetto all'inizio della
+    /// sessione: `self.xp` e' il totale di sempre, e scriverlo qui faceva
+    /// sommare due volte lo stesso lavoro nel riepilogo.
+    fn sessione_da_registrare(&self, minuti: u32) -> Option<crate::storico::SessioneRegistrata> {
+        let (xp_inizio, distrazioni_inizio) = self.xp_a_inizio;
+        Some(crate::storico::SessioneRegistrata {
+            data: crate::storico::adesso(),
+            esame: self.nome_esame(),
+            minuti,
+            xp: (self.xp.punti - xp_inizio).max(0),
+            distrazioni: self.xp.distrazioni.saturating_sub(distrazioni_inizio),
+            blocchi: self.task.completati,
+        })
     }
 
     /// Mette la sessione in pausa per una durata fissa.
@@ -216,6 +231,27 @@ impl StatoApp {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    /// Lo storico deve registrare il guadagno della sessione, non il totale
+    /// di sempre: scrivendo il totale, il riepilogo sommava due volte lo
+    /// stesso lavoro.
+    #[test]
+    fn lo_storico_registra_solo_il_guadagno_della_sessione() {
+        let mut stato = StatoApp::nuovo();
+        stato.xp.punti = 300;
+        stato.xp.distrazioni = 2;
+        stato.xp_a_inizio = (300, 2);
+
+        // Durante la sessione: +150 XP, poi una distrazione sventata (-25).
+        stato.xp.aggiungi(150);
+        stato.xp.registra_distrazione();
+        assert_eq!(stato.xp.punti, 425);
+
+        let record = stato.sessione_da_registrare(25).expect("record");
+        assert_eq!(record.minuti, 25);
+        assert_eq!(record.xp, 125);
+        assert_eq!(record.distrazioni, 1);
+    }
 
     #[test]
     fn la_pausa_non_consuma_tempo_di_studio() {
