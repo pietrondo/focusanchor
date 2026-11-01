@@ -3,7 +3,7 @@
     "focusanchor@locale": {
       "updates": [
         {
-          "version": "1.3.0",
+          "version": "1.3.2",
           "update_link": "https://raw.githubusercontent.com/pietrondo/focusanchor/main/plugin/focusanchor.xpi",
           "applications": {
             "zotero": {

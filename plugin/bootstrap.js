@@ -65,6 +65,7 @@ var FocusAnchor = {
 			},
 			bodyXHTML: `
 				<div class="focusanchor-pane">
+					<div class="focusanchor-titolo">FocusAnchor</div>
 					<div class="focusanchor-riga">
 						<span id="focusanchor-punto"></span>
 						<span id="focusanchor-stato">App chiusa</span>
@@ -103,13 +104,46 @@ var FocusAnchor = {
 
 		// Lo stile si mette qui e non in CSS: il pannello è dentro il documento
 		// di Zotero e deve adattarsi al tema chiaro o scuro senza file esterni.
+		// Il contenitore della sezione dispone i figli in riga: senza questi
+		// vincoli il testo finisce schiacciato in una colonna da ottanta pixel.
+		body.style.display = "block";
+		body.style.width = "100%";
+		body.style.boxSizing = "border-box";
+		body.style.padding = "0";
+
+		const pane = body.querySelector(".focusanchor-pane");
+		if (pane) {
+			pane.style.display = "flex";
+			pane.style.flexDirection = "column";
+			pane.style.width = "100%";
+			pane.style.boxSizing = "border-box";
+			pane.style.gap = "6px";
+			pane.style.fontSize = "12px";
+			pane.style.padding = "2px 0 4px";
+		}
+
+		const titolo = body.querySelector(".focusanchor-titolo");
+		if (titolo) {
+			titolo.style.fontSize = "10px";
+			titolo.style.letterSpacing = "0.08em";
+			titolo.style.textTransform = "uppercase";
+			titolo.style.opacity = "0.55";
+			titolo.style.fontWeight = "600";
+		}
+
 		const riga = body.querySelector(".focusanchor-riga");
 		if (riga) {
 			riga.style.display = "flex";
 			riga.style.alignItems = "center";
 			riga.style.gap = "8px";
+			riga.style.width = "100%";
 			riga.style.fontSize = "13px";
-			riga.style.lineHeight = "1.3";
+			riga.style.lineHeight = "1.35";
+		}
+		const stato = cerca("focusanchor-stato");
+		if (stato) {
+			stato.style.flex = "1 1 auto";
+			stato.style.overflowWrap = "anywhere";
 		}
 		const punto = cerca("focusanchor-punto");
 		if (punto) {
@@ -122,16 +156,19 @@ var FocusAnchor = {
 		}
 		const dettaglio = cerca("focusanchor-dettaglio");
 		if (dettaglio) {
+			dettaglio.style.width = "100%";
 			dettaglio.style.fontSize = "11px";
 			dettaglio.style.opacity = "0.65";
-			dettaglio.style.margin = "2px 0 8px";
-			dettaglio.style.minHeight = "14px";
+			dettaglio.style.lineHeight = "1.35";
+			dettaglio.style.overflowWrap = "anywhere";
 		}
 		const griglia = body.querySelector(".focusanchor-griglia");
 		if (griglia) {
 			griglia.style.display = "grid";
 			griglia.style.gridTemplateColumns = "1fr 1fr";
 			griglia.style.gap = "6px";
+			griglia.style.width = "100%";
+			griglia.style.marginTop = "2px";
 		}
 		for (const [elemento, primario] of [
 			[avvia, true],
@@ -140,13 +177,18 @@ var FocusAnchor = {
 			[ripasso, false],
 		]) {
 			elemento.style.width = "100%";
-			elemento.style.padding = "5px 8px";
+			elemento.style.minHeight = "26px";
+			elemento.style.padding = "5px 6px";
 			elemento.style.fontSize = "12px";
+			elemento.style.textAlign = "center";
 			elemento.style.borderRadius = "4px";
-			elemento.style.border = "1px solid rgba(128,128,128,0.35)";
-			elemento.style.background = "transparent";
+			elemento.style.border = "1px solid rgba(128,128,128,0.45)";
+			elemento.style.background = primario ? "rgba(46,204,113,0.10)" : "transparent";
 			elemento.style.color = "inherit";
 			elemento.style.fontWeight = primario ? "600" : "400";
+			if (primario) {
+				elemento.style.borderColor = "rgba(46,204,113,0.45)";
+			}
 		}
 
 		avvia.onclick = () => this.invia("avvia", this._esame);
