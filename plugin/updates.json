@@ -1,0 +1,18 @@
+{
+  "addons": {
+    "focusanchor@locale": {
+      "updates": [
+        {
+          "version": "1.0.1",
+          "update_link": "https://raw.githubusercontent.com/pietrondo/focusanchor/main/plugin/focusanchor.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "7.0",
+              "strict_max_version": "10.99.99"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
