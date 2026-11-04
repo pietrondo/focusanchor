@@ -132,7 +132,9 @@ pub fn avvia_sessione(
         stato.config.obiettivo = stato.testi_scelti[0].clone();
     }
 
-    let _ = audio.imposta_modalita(stato.modalita_audio(), stato.config.volume);
+    if let Err(messaggio) = audio.imposta_modalita(stato.modalita_audio(), stato.config.volume) {
+        stato.avviso = Some(messaggio);
+    }
     stato.avvia_sessione(mittente);
     let obiettivo = stato.obiettivo_corrente();
     audio.parla(&format!("Sessione avviata. Studiamo {obiettivo}. Iniziamo."));

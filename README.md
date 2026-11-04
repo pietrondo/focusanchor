@@ -20,6 +20,8 @@ Nessun server, nessun Electron: un singolo eseguibile Rust con `eframe`/`egui`.
 - Rumore marrone procedurale per coprire i rumori e i pensieri intrusivi.
 - Battimento binaurale 40 Hz (200 Hz a sinistra, 240 Hz a destra) per la
   sonnolenza da sotto-stimolazione. Serve un paio di cuffie.
+- **Pioggia naturale**: legge `pioggia.mp3` accanto all'eseguibile, così al
+  posto del rumore generato ci metti la registrazione che preferisci.
 - **S.O.S. Sonnolenza**: 60 secondi di micro-missione fisica scelta a caso.
 - **Domande a tradimento** ogni 8-14 minuti: ti chiede di riassumere un
   passaggio che hai davvero sottolineato su Zotero.
@@ -187,6 +189,7 @@ niente porte aperte, niente server, niente chiavi.
 | File | Contenuto |
 | --- | --- |
 | `config.json` | Impostazioni e liste dei domini bloccati |
+| `pioggia.mp3` | Pioggia registrata della modalità *Pioggia naturale* (sostituibile) |
 | `parcheggio_pensieri.txt` | Idee fuori tema salvate durante lo studio |
 | `riassunto_studio.md` | Risposte alle domande a tradimento (leggibile a occhio) |
 | `esame_<nome>.json` | Carte di ripasso di quell'esame, con le scadenze |

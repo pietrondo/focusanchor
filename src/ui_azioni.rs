@@ -68,6 +68,7 @@ pub fn disegna(
             crate::audio::ModalitaAudio::Spenta => "🎵 Spento",
             crate::audio::ModalitaAudio::RumoreMarrone => "🎵 Marrone",
             crate::audio::ModalitaAudio::Pioggia => "🎵 Pioggia",
+            crate::audio::ModalitaAudio::PioggiaFile => "🎵 Naturale",
             crate::audio::ModalitaAudio::Binaurale40 => "🎵 40Hz",
         };
         if ui

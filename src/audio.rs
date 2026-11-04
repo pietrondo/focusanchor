@@ -13,6 +13,7 @@ use std::time::Duration;
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 
 use crate::suono::{Beep, Binaurale40, RumoreMarrone};
+use crate::suono_file::{SuonoFile, FILE_PIOGGIA};
 use crate::suono_pioggia::Pioggia;
 
 /// Modalita' di audio di sottofondo scelta dall'utente.
@@ -24,6 +25,8 @@ pub enum ModalitaAudio {
     RumoreMarrone,
     /// Pioggia: stesso mascheramento, ma con un suono piu' naturale.
     Pioggia,
+    /// Pioggia registrata, letta dal file accanto all'eseguibile.
+    PioggiaFile,
     /// Battito binaurale a 40 Hz per contrastare la sonnolenza.
     Binaurale40,
 }
@@ -35,6 +38,7 @@ impl ModalitaAudio {
             ModalitaAudio::Spenta => "Spento",
             ModalitaAudio::RumoreMarrone => "Rumore Marrone",
             ModalitaAudio::Pioggia => "Pioggia",
+            ModalitaAudio::PioggiaFile => "Pioggia naturale",
             ModalitaAudio::Binaurale40 => "Sveglia 40Hz Anti-Sonno",
         }
     }
@@ -44,7 +48,8 @@ impl ModalitaAudio {
         match self {
             ModalitaAudio::Spenta => ModalitaAudio::RumoreMarrone,
             ModalitaAudio::RumoreMarrone => ModalitaAudio::Pioggia,
-            ModalitaAudio::Pioggia => ModalitaAudio::Binaurale40,
+            ModalitaAudio::Pioggia => ModalitaAudio::PioggiaFile,
+            ModalitaAudio::PioggiaFile => ModalitaAudio::Binaurale40,
             ModalitaAudio::Binaurale40 => ModalitaAudio::Spenta,
         }
     }
@@ -54,6 +59,7 @@ impl ModalitaAudio {
         match self {
             ModalitaAudio::Spenta => ModalitaAudio::Binaurale40,
             ModalitaAudio::Pioggia => ModalitaAudio::RumoreMarrone,
+            ModalitaAudio::PioggiaFile => ModalitaAudio::Pioggia,
             ModalitaAudio::RumoreMarrone => ModalitaAudio::Spenta,
             ModalitaAudio::Binaurale40 => ModalitaAudio::RumoreMarrone,
         }
@@ -68,6 +74,7 @@ impl ModalitaAudio {
             ModalitaAudio::Spenta => "Spenta",
             ModalitaAudio::RumoreMarrone => "RumoreMarrone",
             ModalitaAudio::Pioggia => "Pioggia",
+            ModalitaAudio::PioggiaFile => "PioggiaFile",
             ModalitaAudio::Binaurale40 => "Binaurale40",
         }
     }
@@ -78,6 +85,7 @@ impl ModalitaAudio {
             "Binaurale40" => ModalitaAudio::Binaurale40,
             "Spenta" => ModalitaAudio::Spenta,
             "Pioggia" => ModalitaAudio::Pioggia,
+            "PioggiaFile" => ModalitaAudio::PioggiaFile,
             _ => ModalitaAudio::RumoreMarrone,
         }
     }
@@ -183,6 +191,9 @@ impl MotoreAudio {
         match modalita {
             ModalitaAudio::Binaurale40 => sink.append(Binaurale40::nuovo()),
             ModalitaAudio::Pioggia => sink.append(Pioggia::nuovo()),
+            ModalitaAudio::PioggiaFile => sink.append(SuonoFile::apri(
+                crate::config::cartella_dati().join(FILE_PIOGGIA),
+            )?),
             _ => sink.append(RumoreMarrone::nuovo()),
         }
         self.sink_sottofondo = Some(sink);
@@ -259,5 +270,33 @@ impl Drop for MotoreAudio {
     fn drop(&mut self) {
         self.ferma_voce();
         self.ferma_sottofondo();
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// La modalita' scelta si salva e si rilegge in configurazione.
+    ///
+    /// Senza questo, "Pioggia naturale" tornerebbe "Rumore marrone" a ogni
+    /// riavvio e il file scaricato non si sentirebbe mai.
+    #[test]
+    fn la_pioggia_da_file_sopravvive_al_salvataggio() {
+        let modalita = ModalitaAudio::PioggiaFile;
+        assert_eq!(ModalitaAudio::da_nome(modalita.nome()), modalita);
+        assert!(modalita.attiva());
+    }
+
+    #[test]
+    fn il_selettore_arriva_alla_pioggia_da_file() {
+        assert_eq!(
+            ModalitaAudio::Pioggia.successiva(),
+            ModalitaAudio::PioggiaFile
+        );
+        assert_eq!(
+            ModalitaAudio::PioggiaFile.precedente(),
+            ModalitaAudio::Pioggia
+        );
     }
 }

@@ -22,6 +22,7 @@ mod sessione;
 mod state;
 mod storico;
 mod suono;
+mod suono_file;
 mod suono_pioggia;
 mod task;
 mod tempo;
