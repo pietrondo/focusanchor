@@ -14,43 +14,294 @@ use crate::ui::{badge, ACCENTO, GIALLO, TENUE, VERDE};
 /// Lunghezza massima della domanda che diventa la faccia di una carta.
 const MASSIMO_DOMANDA: usize = 240;
 
+/// La pagina di NotebookLM dentro la finestra.
+///
+/// Prenota sempre lo spazio: se la pagina non c'e' ci sta il pulsante per
+/// aprirla, e il layout non salta quando compare.
+fn riquadro_pagina(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str, altezza: f32) {
+    let larghezza = crate::ui::larghezza(ui);
+    let (rettangolo, _) =
+        ui.allocate_exact_size(egui::vec2(larghezza, altezza), egui::Sense::hover());
+    stato.area_pagina = Some(rettangolo);
+
+    if stato.pagina.is_some() {
+        if let Some(pagina) = &stato.pagina {
+            let indirizzo = pagina.indirizzo();
+            ui.label(
+                egui::RichText::new(if indirizzo.is_empty() {
+                    "Caricamento…".to_string()
+                } else {
+                    crate::ui::accorcia(&indirizzo, 52)
+                })
+                .size(10.0)
+                .color(TENUE),
+            );
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui.small_button("🔄 Ricarica").clicked() {
+                if let Some(link) = link_notebook(stato, esame) {
+                    if let Some(pagina) = &stato.pagina {
+                        pagina.naviga(&link);
+                    }
+                }
+            }
+            if ui.small_button("🌐 Apri nel browser").clicked() {
+                if let Some(link) = link_notebook(stato, esame) {
+                    let _ = crate::notebooklm::apri(&link);
+                }
+            }
+            if ui.small_button("✕ Chiudi").clicked() {
+                // Lasciar cadere la pagina chiude anche il browser: il
+                // profilo resta, quindi il login non si perde.
+                stato.pagina = None;
+                stato.config.notebooklm_incorporato = false;
+                stato.aggiungi_notifica("Pagina di NotebookLM chiusa.");
+            }
+        });
+        return;
+    }
+
+    let mut dentro = ui.new_child(egui::UiBuilder::new()
+        .max_rect(rettangolo)
+        .layout(egui::Layout::top_down(egui::Align::Center)));
+    dentro.add_space((altezza / 2.0 - 70.0).max(0.0));
+    dentro.label(
+        egui::RichText::new("📓 NotebookLM")
+            .size(18.0)
+            .strong()
+            .color(TENUE),
+    );
+    dentro.label(
+        egui::RichText::new("Il notebook qui dentro, con le tue fonti.")
+            .size(13.0)
+            .color(TENUE),
+    );
+    dentro.label(
+        egui::RichText::new("Al primo avvio ti chiede di accedere a Google: una volta sola.")
+            .size(11.0)
+            .color(TENUE),
+    );
+    dentro.add_space(10.0);
+    if dentro
+        .add(egui::Button::new("🌐 Mostra NotebookLM qui").min_size(egui::vec2(260.0, 34.0)))
+        .clicked()
+    {
+        apri_pagina(stato, esame);
+    }
+}
+
+/// Apre NotebookLM dentro la finestra.
+fn apri_pagina(stato: &mut StatoApp, esame: &str) {
+    let Some(ospite) = crate::incasso::finestra_app() else {
+        stato.avviso = Some("Non trovo la finestra di FocusAnchor.".into());
+        return;
+    };
+    let url = link_notebook(stato, esame)
+        .unwrap_or_else(|| "https://notebooklm.google.com/".to_string());
+    // Il profilo sta accanto ai dati dell'app: il login a Google si fa una
+    // volta e resta.
+    let profilo = crate::config::cartella_dati().join("webview_notebooklm");
+    match crate::webview::Pagina::crea(ospite.0 as isize, &url, &profilo) {
+        Ok(pagina) => {
+            stato.pagina = Some(pagina);
+            stato.config.notebooklm_incorporato = true;
+            stato.salva_configurazione();
+            stato.aggiungi_notifica("NotebookLM aperto qui dentro.");
+        }
+        Err(e) => {
+            stato.config.notebooklm_incorporato = false;
+            stato.avviso = Some(e);
+        }
+    }
+}
+
+/// Riapre la pagina di NotebookLM se era aperta all'ultima chiusura.
+///
+/// Va chiamata dal ciclo principale, quando la finestra esiste gia'.
+pub fn riapri_pagina_se_era_aperta(stato: &mut StatoApp) {
+    if stato.pagina.is_some() || !stato.config.notebooklm_incorporato {
+        return;
+    }
+    let esame = crate::ui_zotero::nome_esame_corrente(stato);
+    apri_pagina(stato, &esame);
+}
+
+/// Scheda di studio: generazione, anteprima e copia del file per NotebookLM.
+///
+/// E' il materiale che l'app sa produrre dalle sottolineature Zotero: si
+/// carica nel notebook come fonte, senza trascinarlo a mano.
+fn scheda_di_studio(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
+    egui::CollapsingHeader::new("📄 Scheda di studio")
+        .default_open(false)
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui.small_button("Crea / aggiorna").clicked() {
+                    crate::ui_archivi::genera_notebooklm(stato);
+                }
+                if ui.small_button("Anteprima").clicked() {
+                    match crate::archivi::leggi_notebooklm_esame_result(esame) {
+                        Ok(testo) if !testo.trim().is_empty() => {
+                            stato.anteprima_notebooklm =
+                                Some((crate::archivi::nome_file_notebooklm(esame), testo));
+                            stato.avviso = None;
+                        }
+                        Ok(_) => crate::ui_archivi::segnala_errore_materiali(
+                            stato,
+                            "La scheda è vuota. Generala di nuovo prima dell'anteprima.",
+                        ),
+                        Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
+                    }
+                }
+                if ui.small_button("Copia").clicked() {
+                    match crate::archivi::leggi_notebooklm_esame_result(esame) {
+                        Ok(testo) if !testo.trim().is_empty() => {
+                            match crate::notebooklm::copia_negli_appunti(&testo) {
+                                Ok(()) => crate::ui_archivi::segnala_successo_materiali(
+                                    stato,
+                                    "Scheda copiata negli appunti.",
+                                ),
+                                Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
+                            }
+                        }
+                        Ok(_) => crate::ui_archivi::segnala_errore_materiali(
+                            stato,
+                            "La scheda è vuota. Generala di nuovo prima di copiarla.",
+                        ),
+                        Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
+                    }
+                }
+                let percorso = crate::archivi::percorso_notebooklm_esame(esame);
+                if percorso.exists() && ui.small_button("Mostra file").clicked() {
+                    match crate::archivi::rivela_file(&percorso) {
+                        Ok(()) => stato.avviso = None,
+                        Err(e) => stato.avviso = Some(e),
+                    }
+                }
+            });
+        });
+
+    // L'anteprima sta fuori dall'intestazione richiudibile: una volta
+    // aperta deve restare visibile, non sparire dietro a un clic.
+    let mut chiudi = false;
+    if let Some((nome, contenuto)) = stato.anteprima_notebooklm.clone() {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Anteprima scheda").strong());
+            if ui.small_button("Chiudi anteprima").clicked() {
+                chiudi = true;
+            }
+        });
+        crate::ui::mostra_contenuto(ui, &nome, &contenuto);
+    }
+    if chiudi {
+        stato.anteprima_notebooklm = None;
+    }
+}
+
+/// Link del notebook dell'esame, se salvato.
+fn link_notebook(stato: &StatoApp, esame: &str) -> Option<String> {
+    stato
+        .config
+        .notebook_esami
+        .get(esame)
+        .filter(|l| !l.trim().is_empty())
+        .cloned()
+}
+
+/// Salva il link incollato, riconoscendolo anche dentro una frase.
+fn salva_link(stato: &mut StatoApp, esame: &str) {
+    let riconosciuto = crate::notebooklm::riconosci_link(&stato.campo_notebook)
+        .or_else(|| crate::notebooklm::normalizza_link(&stato.campo_notebook));
+    let Some(link) = riconosciuto else {
+        stato.avviso = Some(
+            "Il link non sembra valido: incolla un indirizzo che inizi con https://".into(),
+        );
+        return;
+    };
+    stato.campo_notebook = link.clone();
+    stato
+        .config
+        .notebook_esami
+        .insert(esame.to_string(), link);
+    match stato.salva_configurazione_con_esito() {
+        Ok(()) => {
+            stato.mostra_campo_link = false;
+            stato.aggiungi_notifica("Link del notebook salvato.");
+        }
+        Err(e) => stato.avviso = Some(format!("Link non salvato: {e}")),
+    }
+}
+
 /// Pannello "Chiedi a NotebookLM": domanda, invio e risposta.
 ///
 /// L'esame arriva dall'esterno: il selettore e' uno solo per tutta la
 /// finestra, altrimenti Zotero e NotebookLM possono parlare di due esami
 /// diversi nello stesso momento.
-pub fn sezione_chiedi(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
+pub fn sezione_chiedi(
+    ui: &mut egui::Ui,
+    stato: &mut StatoApp,
+    esame: &str,
+    altezza_pagina: f32,
+) {
     if esame.trim().is_empty() {
         return;
     }
     let scelto = esame.to_string();
 
+    // La pagina vera, se aperta: qui ci passa sopra il browser incorporato.
+    riquadro_pagina(ui, stato, &scelto, altezza_pagina);
+
+    // Tutto il resto sta in una sezione richiudibile: con la pagina aperta
+    // il posto serve a quella, e i comandi si aprono quando servono.
+    egui::CollapsingHeader::new("⚙ Comandi")
+        .default_open(stato.pagina.is_none())
+        .show(ui, |ui| {
+            comandi(ui, stato, &scelto);
+        });
+}
+
+/// Comandi del pannello: collegamento, scheda, domande e strumenti.
+fn comandi(ui: &mut egui::Ui, stato: &mut StatoApp, scelto: &str) {
     ui.horizontal_wrapped(|ui| {
-        if notebook_di(stato, &scelto).is_some() {
+        if notebook_di(stato, scelto).is_some() {
             badge(ui, "notebook collegato", VERDE);
         } else {
             badge(ui, "senza notebook", GIALLO);
         }
-    });
-
-    // Collegare i cinque esami a mano sarebbe cinque copia-incolla: la CLI
-    // sa i titoli dei notebook, quindi si abbinano per nome.
-    ui.horizontal_wrapped(|ui| {
+        // Collegare i cinque esami a mano sarebbe cinque copia-incolla: la
+        // CLI sa i titoli dei notebook, quindi si abbinano per nome.
         if ui
-            .button("🔗 Collega i notebook per nome")
+            .small_button("🔗 Collega per nome")
             .on_hover_text("Legge i tuoi notebook da NotebookLM e li abbina agli esami")
             .clicked()
         {
             collega_notebook(stato);
         }
-        if notebook_di(stato, &scelto).is_some() && ui.button("▶ Apri nel browser").clicked() {
-            if let Some(link) = stato.config.notebook_esami.get(&scelto).cloned() {
-                if let Err(e) = crate::notebooklm::apri(&link) {
-                    stato.avviso = Some(e);
-                }
-            }
+        if ui.small_button("✎ Link").clicked() {
+            stato.campo_notebook = link_notebook(stato, scelto).unwrap_or_default();
+            stato.mostra_campo_link = !stato.mostra_campo_link;
         }
     });
+
+    if stato.mostra_campo_link {
+        egui::TextEdit::singleline(&mut stato.campo_notebook)
+            .hint_text("https://notebooklm.google.com/notebook/…")
+            .desired_width(f32::INFINITY)
+            .show(ui);
+        ui.horizontal_wrapped(|ui| {
+            if ui.small_button("💾 Salva link").clicked() {
+                salva_link(stato, scelto);
+            }
+            if ui.small_button("▶ Apri nel browser").clicked() {
+                if let Some(link) = link_notebook(stato, scelto) {
+                    let _ = crate::notebooklm::apri(&link);
+                }
+            }
+        });
+    }
+
+    // Scheda di studio: il file con le sottolineature, da caricare come
+    // fonte nel notebook.
+    scheda_di_studio(ui, stato, scelto);
 
     ui.add_space(4.0);
     let domanda = egui::TextEdit::singleline(&mut stato.campo_domanda)
@@ -62,7 +313,7 @@ pub fn sezione_chiedi(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
     let pronta = !stato.campo_domanda.trim().is_empty();
 
     ui.horizontal_wrapped(|ui| {
-        let collegato = notebook_di(stato, &scelto).is_some();
+        let collegato = notebook_di(stato, scelto).is_some();
         let attivo = pronta && collegato && !stato.chiedi.in_corso;
         if ui
             .add_enabled(
@@ -77,7 +328,7 @@ pub fn sezione_chiedi(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
             .clicked()
             || (invio && attivo)
         {
-            chiedi(stato, &scelto);
+            chiedi(stato, scelto);
         }
         // Ripiego a mano: se la CLI si rompe (la libreria non e' ufficiale)
         // il flusso col copia-incolla funziona ancora.
@@ -86,7 +337,7 @@ pub fn sezione_chiedi(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
             .on_hover_text("Ripiego a mano: copia la domanda e incollala in NotebookLM")
             .clicked()
         {
-            copia_domanda(stato, &scelto);
+            copia_domanda(stato, scelto);
         }
     });
 
@@ -103,8 +354,14 @@ pub fn sezione_chiedi(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
     }
 
     mostra_risposta(ui, stato);
-    ui.add_space(6.0);
-    strumenti(ui, stato, &scelto);
+    ui.add_space(4.0);
+    // Gli strumenti senza browser stanno chiusi: quando la pagina e'
+    // aperta, il posto serve a quella.
+    egui::CollapsingHeader::new("🛠 Strumenti senza browser")
+        .default_open(stato.pagina.is_none())
+        .show(ui, |ui| {
+            strumenti(ui, stato, scelto);
+        });
 }
 
 /// Fonti del notebook e generazione delle flashcard.

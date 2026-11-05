@@ -113,6 +113,12 @@ pub struct StatoApp {
     pub zotero_incassato: Option<isize>,
     /// Riquadro dove disegnare Zotero, in punti egui.
     pub area_zotero: Option<egui::Rect>,
+    /// Pagina di NotebookLM incorporata, se aperta.
+    pub pagina: Option<crate::webview::Pagina>,
+    /// Riquadro dove disegnare la pagina, in punti egui.
+    pub area_pagina: Option<egui::Rect>,
+    /// Vero se il campo per incollare il link del notebook e' aperto.
+    pub mostra_campo_link: bool,
     /// Domande a NotebookLM e loro risposte.
     pub chiedi: crate::notebooklm::Chiedi,
     /// Generazione di flashcard e lettura delle fonti.
@@ -183,6 +189,9 @@ impl StatoApp {
             esame_notebooklm: None,
             zotero_incassato: None,
             area_zotero: None,
+            pagina: None,
+            area_pagina: None,
+            mostra_campo_link: false,
             chiedi: crate::notebooklm::Chiedi::nuovo(),
             genera: crate::notebooklm::Genera::nuovo(),
             conferma: None,

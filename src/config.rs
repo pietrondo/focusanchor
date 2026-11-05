@@ -76,6 +76,24 @@ pub struct Configurazione {
     /// ricominciare dalla scelta dell'esame ogni volta.
     #[serde(default)]
     pub esame_corrente: String,
+    /// Vero se la pagina di NotebookLM era aperta dentro la finestra.
+    ///
+    /// Riaprire l'app e ritrovare il notebook e' il punto dell'interfaccia
+    /// unica; il profilo del browser conserva il login.
+    #[serde(default)]
+    pub notebooklm_incorporato: bool,
+    /// Vero se l'intestazione e' ridotta a una riga.
+    ///
+    /// Con Zotero e NotebookLM affiancati lo spazio verticale e' prezioso:
+    /// l'intestazione parte compressa e si allarga solo se serve.
+    #[serde(default = "vero")]
+    pub intestazione_compatta: bool,
+    /// Quanto spazio prende la colonna di Zotero, da 0.2 a 0.8.
+    ///
+    /// Si trascina la linea in mezzo: e' il modo per dare piu' spazio alla
+    /// pagina web o al PDF senza cambiare finestra.
+    #[serde(default = "divisione_default")]
+    pub divisione: f32,
 }
 
 impl Default for Configurazione {
@@ -98,8 +116,16 @@ impl Default for Configurazione {
             xp_distrazioni: 0,
             modello_ai: modello_ai_default(),
             esame_corrente: String::new(),
+            notebooklm_incorporato: false,
+            intestazione_compatta: true,
+            divisione: divisione_default(),
         }
     }
+}
+
+/// Divisione iniziale fra le due colonne: meta' e meta'.
+fn divisione_default() -> f32 {
+    0.52
 }
 
 /// Valore di default `true`, usato da serde quando il campo manca.

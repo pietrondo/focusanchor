@@ -16,6 +16,7 @@ serde_json = "1.0"
 chrono = "0.4"
 rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 dirs = "5.0"
+wry = "0.57.1"
 
 [profile.release]
 opt-level = "z"

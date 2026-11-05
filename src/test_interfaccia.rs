@@ -135,7 +135,7 @@ mod test {
         let raw = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(620.0, 860.0),
+                egui::vec2(620.0, 1400.0),
             )),
             ..Default::default()
         };
@@ -208,7 +208,7 @@ mod test_appelli {
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(620.0, 860.0),
+                    egui::vec2(620.0, 1400.0),
                 )),
                 ..Default::default()
             },
@@ -403,7 +403,7 @@ mod test_appelli {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(620.0, 860.0),
+                egui::vec2(620.0, 1400.0),
             )),
             ..Default::default()
         };
@@ -461,13 +461,13 @@ mod test_notebooklm {
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(620.0, 860.0),
+                    egui::vec2(620.0, 1400.0),
                 )),
                 ..Default::default()
             },
             |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato, "Storia romana");
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato, "Storia romana", 300.0);
                 });
             },
         );
@@ -511,7 +511,7 @@ mod test_notebooklm {
             |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     crate::ui_zotero::sezione_esame(ui, &mut stato);
-                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato, "Storia romana", 200.0);
                 });
             },
         );
@@ -545,14 +545,14 @@ mod test_notebooklm {
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(620.0, 860.0),
+                    egui::vec2(620.0, 1400.0),
                 )),
                 ..Default::default()
             },
             |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     crate::ui_zotero::sezione_esame(ui, &mut stato);
-                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato, "Storia romana", 200.0);
                 });
             },
         );
@@ -600,6 +600,7 @@ mod test_incasso {
             |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     crate::ui_zotero::sezione_esame(ui, &mut stato);
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato, "Storia romana", 200.0);
                 });
             },
         );
@@ -668,9 +669,9 @@ mod test_due_colonne {
             })
             .collect();
 
-        assert!(testi.iter().any(|t| t.contains("IL TUO ESAME")), "{testi:?}");
+        assert!(testi.iter().any(|t| t.contains("Aggancia Zotero")), "{testi:?}");
         assert!(
-            testi.iter().any(|t| t.contains("CHIEDI A NOTEBOOKLM")),
+            testi.iter().any(|t| t.contains("NOTEBOOKLM")),
             "{testi:?}"
         );
     }
@@ -703,12 +704,12 @@ mod test_link {
             let mut inp = egui::RawInput::default();
             inp.screen_rect = Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(620.0, 860.0),
+                egui::vec2(620.0, 1400.0),
             ));
             let _ = ctx.run(inp, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     crate::ui_zotero::sezione_esame(ui, &mut stato);
-                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato, "Storia romana", 200.0);
                 });
             });
         }
@@ -737,14 +738,14 @@ mod test_materiali {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(620.0, 860.0),
+                egui::vec2(620.0, 1400.0),
             )),
             ..Default::default()
         };
         let output = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 crate::ui_zotero::sezione_esame(ui, &mut stato);
-                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato, "Storia romana", 200.0);
             });
         });
         let testi: Vec<&str> = output
@@ -771,7 +772,7 @@ mod test_materiali {
             "{testi:?}"
         );
         assert!(
-            testi.iter().any(|testo| testo.contains("aggiorna scheda")),
+            testi.iter().any(|testo| testo.contains("Scheda di studio")),
             "{testi:?}"
         );
     }
@@ -803,14 +804,14 @@ mod test_anteprima_notebooklm {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(620.0, 860.0),
+                    egui::vec2(620.0, 1400.0),
                 )),
                 ..Default::default()
             };
             let output = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     crate::ui_zotero::sezione_esame(ui, stato);
-                    crate::ui_zotero::sezione_notebooklm(ui, stato);
+                    crate::ui_notebooklm::sezione_chiedi(ui, stato, "Storia romana", 200.0);
                 });
             });
             output
@@ -834,14 +835,14 @@ mod test_anteprima_notebooklm {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(620.0, 860.0),
+                egui::vec2(620.0, 1400.0),
             )),
             ..Default::default()
         };
         let output = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 crate::ui_zotero::sezione_esame(ui, &mut stato);
-                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato, "Storia romana", 200.0);
             });
         });
         let chiudi = output.shapes.iter().find_map(|shape| match &shape.shape {
@@ -855,7 +856,7 @@ mod test_anteprima_notebooklm {
         let mut click = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(620.0, 860.0),
+                egui::vec2(620.0, 1400.0),
             )),
             ..Default::default()
         };
@@ -877,7 +878,7 @@ mod test_anteprima_notebooklm {
         let _ = ctx.run(click, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 crate::ui_zotero::sezione_esame(ui, &mut stato);
-                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato, "Storia romana", 200.0);
             });
         });
         assert!(stato.anteprima_notebooklm.is_none());

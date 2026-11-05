@@ -46,6 +46,7 @@ mod ui_setup;
 mod ui_storico;
 mod ui_sfida;
 mod ui_zotero;
+mod webview;
 mod xp;
 mod zotero;
 mod zotero_attivo;
@@ -116,6 +117,32 @@ impl AppFocus {
             (area.width() * scala).round() as i32,
             (area.height() * scala).round() as i32,
         );
+    }
+
+    /// Tiene la pagina di NotebookLM dentro la finestra.
+    ///
+    /// Durante la sessione la finestra diventa l'overlay: la pagina va
+    /// nascosta, altrimenti coprirebbe il timer.
+    fn sistema_pagina(&mut self, ctx: &egui::Context) {
+        let Some(pagina) = &self.stato.pagina else {
+            return;
+        };
+        if self.stato.in_sessione() {
+            pagina.mostra(false);
+            return;
+        }
+        let Some(area) = self.stato.area_pagina else {
+            pagina.mostra(false);
+            return;
+        };
+        let scala = ctx.pixels_per_point();
+        pagina.posiziona(
+            (area.min.x * scala).round() as i32,
+            (area.min.y * scala).round() as i32,
+            (area.width() * scala).round() as i32,
+            (area.height() * scala).round() as i32,
+        );
+        pagina.mostra(true);
     }
 
     fn nuovo(cc: &eframe::CreationContext<'_>) -> Self {
@@ -279,6 +306,8 @@ impl eframe::App for AppFocus {
             ui_setup::disegna(ctx, &mut self.stato, &mut self.audio, &self.mittente);
         }
         self.sistema_zotero_incassato(ctx);
+        crate::ui_notebooklm::riapri_pagina_se_era_aperta(&mut self.stato);
+        self.sistema_pagina(ctx);
         self.aggiorna_vista(ctx);
         ctx.request_repaint();
     }

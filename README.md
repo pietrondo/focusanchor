@@ -172,6 +172,18 @@ elevati resta attivo solo il Guardiano Finestre (Livello 2).
 3. Scegli l'esame (la collezione) e spunta 2 o 3 testi.
 4. Premi **Inizia la sessione**.
 
+**La finestra di lavoro**
+
+All'apertura ci sono due pannelli affiancati: **Zotero a sinistra** (con il
+suo pulsante *Aggancia Zotero qui*) e **NotebookLM a destra**. In mezzo c'è
+una linea: trascinala per dare più spazio all'uno o all'altro. La posizione
+resta salvata.
+
+L'intestazione parte compressa (**▴** in alto a destra per allargarla):
+resta una riga con XP e conto alla rovescia, e lo spazio va allo studio.
+Le schede (obiettivo, testi, appelli, archivio, ripasso, storico) stanno in
+*⚙ Impostazioni e appelli*, chiuso per default.
+
 **Zotero dentro la finestra**
 
 Il pulsante **📌 Aggancia Zotero qui** porta la finestra di Zotero dentro

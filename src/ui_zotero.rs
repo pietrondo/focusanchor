@@ -63,15 +63,12 @@ fn scegli_esame(stato: &mut StatoApp, nome: &str) {
     }
 }
 
-/// Il tuo esame: tutto quello che serve su un esame, in una scheda sola.
-pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
+/// Il selettore dell'esame, una riga.
+pub fn selettore_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
     let disponibili = esami_disponibili(stato);
     if disponibili.is_empty() {
-        crate::ui_caricamento::stato_vuoto(ui, stato);
         return;
     }
-
-    // Un solo selettore per tutta la scheda.
     let corrente = esame_corrente(stato, &disponibili);
     stato.esame_notebooklm = Some(corrente.clone());
     let mut scelto = Some(corrente.clone());
@@ -81,7 +78,10 @@ pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
         .selected_text(egui::RichText::new(crate::ui::accorcia(&corrente, 40)).size(15.0))
         .show_ui(ui, |ui| {
             for nome in &disponibili {
-                let collezione = stato.collezioni.iter().find(|c| c.nome.eq_ignore_ascii_case(nome));
+                let collezione = stato
+                    .collezioni
+                    .iter()
+                    .find(|c| c.nome.eq_ignore_ascii_case(nome));
                 let etichetta = match collezione {
                     Some(c) if c.documenti > 0 => {
                         format!("{}  ·  {} doc.", nome, c.documenti)
@@ -96,6 +96,16 @@ pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
             scegli_esame(stato, &nuovo);
         }
     }
+}
+
+/// Il tuo esame: tutto quello che serve su un esame, in una scheda sola.
+pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    if esami_disponibili(stato).is_empty() {
+        crate::ui_caricamento::stato_vuoto(ui, stato);
+        return;
+    }
+    selettore_esame(ui, stato);
+    let corrente = esame_corrente(stato, &esami_disponibili(stato));
 
     ui.add_space(8.0);
     materiali_zotero(ui, stato, &corrente);
@@ -118,29 +128,12 @@ pub fn nome_esame_corrente(stato: &StatoApp) -> String {
     esame_corrente(stato, &esami_disponibili(stato))
 }
 
-/// Colonna NotebookLM: link, fonti, domande e flashcard dello stesso esame.
-pub fn sezione_notebooklm(ui: &mut egui::Ui, stato: &mut StatoApp) {
-    let esame = nome_esame_corrente(stato);
-    if esame.is_empty() {
-        ui.label(
-            egui::RichText::new("Scegli un esame per usare NotebookLM.")
-                .size(12.0)
-                .color(TENUE),
-        );
-        return;
-    }
-    link_notebook(ui, stato, &esame);
-    ui.add_space(6.0);
-    crate::ui_notebooklm::sezione_chiedi(ui, stato, &esame);
-}
-
 /// Riquadro dove vive la finestra di Zotero, se agganciata.
 ///
 /// Lo spazio si prenota sempre: se non c'e' Zotero dentro ci sta il
 /// pulsante per agganciarlo, e il layout non salta quando compare.
-fn riquadro_zotero(ui: &mut egui::Ui, stato: &mut StatoApp) {
+pub fn riquadro_zotero(ui: &mut egui::Ui, stato: &mut StatoApp, altezza: f32) {
     let larghezza = crate::ui::larghezza(ui);
-    let altezza = 360.0;
     let (rettangolo, _) =
         ui.allocate_exact_size(egui::vec2(larghezza, altezza), egui::Sense::hover());
     // La posizione serve al ciclo principale per muovere la finestra vera.
@@ -248,7 +241,7 @@ fn materiali_zotero(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
     egui::CollapsingHeader::new("📚 Materiali Zotero")
         .default_open(true)
         .show(ui, |ui| {
-            riquadro_zotero(ui, stato);
+            riquadro_zotero(ui, stato, 360.0);
             ui.add_space(4.0);
             crate::ui_caricamento::pulsanti_caricamento(ui, stato);
             ui.add_space(4.0);
@@ -290,119 +283,6 @@ fn materiali_zotero(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
                 );
             }
         });
-}
-
-/// Link del notebook dell'esame.
-///
-/// Ogni esame ha il suo notebook con i testi caricati: salvando il link una
-/// volta, le domande vanno al notebook giusto.
-fn link_notebook(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
-    let salvato = stato
-        .config
-        .notebook_esami
-        .get(esame)
-        .cloned()
-        .unwrap_or_default();
-    let mut salva = false;
-    let mut apri = false;
-
-    ui.label(
-        egui::RichText::new("Link del notebook")
-            .size(12.0)
-            .color(TENUE),
-    );
-    egui::TextEdit::singleline(&mut stato.campo_notebook)
-        .hint_text("https://notebooklm.google.com/notebook/…")
-        .desired_width(f32::INFINITY)
-        .show(ui);
-    ui.horizontal_wrapped(|ui| {
-        if ui.button("💾 Salva link").clicked() {
-            salva = true;
-        }
-        if !salvato.is_empty() && ui.button("▶ Apri").clicked() {
-            apri = true;
-        }
-        if ui.button("Crea / aggiorna scheda").clicked() {
-            crate::ui_archivi::genera_notebooklm(stato);
-        }
-        if ui.button("Anteprima scheda").clicked() {
-            match crate::archivi::leggi_notebooklm_esame_result(esame) {
-                Ok(testo) if !testo.trim().is_empty() => {
-                    stato.anteprima_notebooklm =
-                        Some((crate::archivi::nome_file_notebooklm(esame), testo));
-                    stato.avviso = None;
-                }
-                Ok(_) => crate::ui_archivi::segnala_errore_materiali(
-                    stato,
-                    "La scheda è vuota. Generala di nuovo prima dell'anteprima.",
-                ),
-                Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
-            }
-        }
-        if ui.button("Copia scheda").clicked() {
-            match crate::archivi::leggi_notebooklm_esame_result(esame) {
-                Ok(testo) if !testo.trim().is_empty() => {
-                    match crate::notebooklm::copia_negli_appunti(&testo) {
-                        Ok(()) => crate::ui_archivi::segnala_successo_materiali(
-                            stato,
-                            "Scheda copiata negli appunti.",
-                        ),
-                        Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
-                    }
-                }
-                Ok(_) => crate::ui_archivi::segnala_errore_materiali(
-                    stato,
-                    "La scheda è vuota. Generala di nuovo prima di copiarla.",
-                ),
-                Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
-            }
-        }
-        let percorso = crate::archivi::percorso_notebooklm_esame(esame);
-        if percorso.exists() && ui.button("Mostra file").clicked() {
-            match crate::archivi::rivela_file(&percorso) {
-                Ok(()) => stato.avviso = None,
-                Err(e) => stato.avviso = Some(e),
-            }
-        }
-    });
-
-    if let Some((nome, contenuto)) = stato.anteprima_notebooklm.clone() {
-        let mut chiudi = false;
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Anteprima scheda").strong());
-            if ui.small_button("Chiudi anteprima").clicked() {
-                chiudi = true;
-            }
-        });
-        crate::ui::mostra_contenuto(ui, &nome, &contenuto);
-        if chiudi {
-            stato.anteprima_notebooklm = None;
-        }
-    }
-
-    if salva {
-        let riconosciuto = crate::notebooklm::riconosci_link(&stato.campo_notebook);
-        match riconosciuto.or_else(|| crate::notebooklm::normalizza_link(&stato.campo_notebook)) {
-            Some(link) => {
-                stato.campo_notebook = link.clone();
-                salva_link_con_persistenza(stato, esame, &link, |stato| {
-                    stato.salva_configurazione_con_esito()
-                });
-            }
-            None => {
-                stato.avviso = Some(
-                    "Il link non sembra valido: incolla un indirizzo che inizi con https://".into(),
-                );
-            }
-        }
-    }
-    if apri {
-        if let Err(e) = crate::notebooklm::apri(&salvato) {
-            stato.avviso = Some(e);
-        } else {
-            crate::ui_archivi::segnala_successo_materiali(stato, "NotebookLM aperto nel browser.");
-        }
-    }
 }
 
 /// Testi dell'esame, da spuntare in 2 o 3.
@@ -456,39 +336,6 @@ fn ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
             badge(ui, &format!("{scadute} da ripassare"), colore);
         }
     });
-}
-
-fn salva_link_con_persistenza(
-    stato: &mut StatoApp,
-    esame: &str,
-    link: &str,
-    persisti: impl FnOnce(&mut StatoApp) -> Result<(), String>,
-) {
-    let precedente = stato
-        .config
-        .notebook_esami
-        .insert(esame.to_string(), link.to_string());
-    let esito = persisti(stato);
-    if esito.is_err() {
-        if let Some(link_precedente) = precedente {
-            stato
-                .config
-                .notebook_esami
-                .insert(esame.to_string(), link_precedente);
-        } else {
-            stato.config.notebook_esami.remove(esame);
-        }
-    }
-    match esito {
-        Ok(()) => crate::ui_archivi::segnala_successo_materiali(
-            stato,
-            "Link del notebook salvato.",
-        ),
-        Err(e) => {
-            stato.conferma = None;
-            stato.avviso = Some(format!("Link non salvato: {e}"));
-        }
-    }
 }
 
 /// Lista dei testi con la casella e il pulsante "apri in Zotero".
@@ -548,37 +395,5 @@ fn elenco_testi(ui: &mut egui::Ui, stato: &mut StatoApp) {
         if let Err(e) = esito {
             stato.avviso = Some(e);
         }
-    }
-}
-
-#[cfg(test)]
-mod test_salvataggio_link {
-    use super::*;
-
-    #[test]
-    fn un_errore_di_persistenza_non_mostra_successo() {
-        let mut stato = StatoApp::nuovo();
-        stato.conferma = Some(("Link del notebook salvato.".into(), std::time::Instant::now()));
-        stato.config.notebook_esami.insert(
-            "Storia romana".into(),
-            "https://notebooklm.google.com/old".into(),
-        );
-
-        salva_link_con_persistenza(
-            &mut stato,
-            "Storia romana",
-            "https://notebooklm.google.com/new",
-            |_| Err("accesso negato".into()),
-        );
-
-        assert!(stato.conferma.is_none());
-        assert_eq!(
-            stato.config.notebook_esami.get("Storia romana").unwrap(),
-            "https://notebooklm.google.com/old"
-        );
-        assert!(stato
-            .avviso
-            .as_deref()
-            .is_some_and(|avviso| avviso.contains("accesso negato")));
     }
 }
