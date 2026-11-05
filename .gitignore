@@ -16,3 +16,8 @@ plugin/focusanchor.xpi
 
 # Tooling locale degli agenti.
 .engram/
+.agents/
+.codegraph/
+.tmp-rain-check/
+target-ux-core/
+target-ux-reload/
