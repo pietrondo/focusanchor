@@ -483,7 +483,8 @@ mod test_notebooklm {
 
         assert!(testi.iter().any(|t| t.contains("Storia romana")), "{testi:?}");
         assert!(testi.iter().any(|t| t.contains("Chiedi a NotebookLM")), "{testi:?}");
-        assert!(testi.iter().any(|t| t.contains("Incolla la risposta")), "{testi:?}");
+        assert!(testi.iter().any(|t| t.contains("Genera flashcard")), "{testi:?}");
+        assert!(testi.iter().any(|t| t.contains("Carica la scheda")), "{testi:?}");
     }
 
     /// Senza esami con una scheda il pannello spiega cosa manca invece di

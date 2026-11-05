@@ -106,8 +106,10 @@ pub struct StatoApp {
     /// Non dipende da Zotero: si puo' chiedere anche a Zotero chiuso, per
     /// qualsiasi esame che abbia una scheda.
     pub esame_notebooklm: Option<String>,
-    /// Risposta di NotebookLM riportata dentro l'app, per esame.
-    pub risposta_notebooklm: Option<(String, String)>,
+    /// Domande a NotebookLM e loro risposte.
+    pub chiedi: crate::notebooklm::Chiedi,
+    /// Generazione di flashcard e lettura delle fonti.
+    pub genera: crate::notebooklm::Genera,
     /// Messaggio di conferma mostrato dopo aver salvato un pensiero.
     pub conferma: Option<(String, Instant)>,
     /// Avviso mostrato in giallo (per esempio permessi mancanti).
@@ -172,7 +174,8 @@ impl StatoApp {
             campo_domanda: String::new(),
             domanda_notebooklm: String::new(),
             esame_notebooklm: None,
-            risposta_notebooklm: None,
+            chiedi: crate::notebooklm::Chiedi::nuovo(),
+            genera: crate::notebooklm::Genera::nuovo(),
             conferma: None,
             avviso: None,
             codice_sblocco: None,

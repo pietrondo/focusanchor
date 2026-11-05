@@ -228,6 +228,8 @@ impl eframe::App for AppFocus {
         self.comandi(ctx);
         self.stato.sincronizza_voce(&mut self.audio);
         self.stato.ai.aggiorna();
+        self.stato.chiedi.aggiorna();
+        self.stato.genera.aggiorna();
         self.stato.aggiorna_sessione(&mut self.audio);
         self.stato.campiona_tempo();
         self.stato.aggiorna_interleaving(&mut self.audio);

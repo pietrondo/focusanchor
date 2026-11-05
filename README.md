@@ -88,25 +88,43 @@ Il pulsante **Spiegami questo passaggio** manda il testo copiato a OpenCode
 spiegazione nell'overlay. Usa l'autenticazione che hai già: nessuna chiave
 nel programma e nessuna dipendenza HTTP aggiuntiva.
 
-**Chiedere a NotebookLM**
+**Chiedere a NotebookLM, dentro l'app**
 
-Il riquadro *Chiedi a NotebookLM* fa il giro completo, e non richiede che
-Zotero sia aperto:
+Il riquadro *Chiedi a NotebookLM* parla con la CLI di
+[notebooklm-py](https://github.com/teng-lin/notebooklm-py): la domanda va
+al notebook dell'esame e la risposta arriva nella finestra, senza passare
+dal browser. Non serve Zotero aperto: gli esami sono quelli con una scheda.
 
-1. Scegli l'esame e scrivi la domanda che vuoi fare davvero ("fammi un
-   riassunto del capitolo 3").
-2. **Chiedi a NotebookLM** aggiunge il contesto dell'esame, copia la
-   domanda e apre il notebook di quell'esame. Se il notebook è già aperto
-   nel browser porta avanti quella finestra invece di aprire una scheda
-   doppia, così non perdi la conversazione.
-3. Incolli la domanda (`Ctrl+V`, Invio) e leggi la risposta.
-4. Copi la risposta, torni nell'app e premi **Incolla la risposta**.
-5. **Salva come carta di ripasso**: la spiegazione entra nel ripasso
-   dilazionato, con la tua domanda davanti e la spiegazione dietro.
+- **🔗 Collega i notebook per nome** legge i tuoi notebook dall'account e li
+  abbina agli esami confrontando i titoli. Un click invece di cinque
+  copia-incolla di link.
+- **❓ Chiedi a NotebookLM** manda la domanda scritta nel campo (anche con
+  Invio) e mostra la risposta con le sue fonti.
+- **📄 Fonti** elenca cosa hai già caricato in quel notebook.
+- **⬆ Carica la scheda** genera la scheda dell'esame e la carica come fonte,
+  senza trascinare file nel browser.
+- **🎴 Genera flashcard** fa scrivere a NotebookLM un mazzo dalle fonti, e
+  **Importa nel ripasso** le fa entrare nel ripasso dilazionato dell'esame.
+- **💾 Salva come carta** mette una singola risposta nel ripasso, con la tua
+  domanda davanti e la spiegazione dietro.
 
-Il punto è che la spiegazione non finisce più nel vuoto: quello che
-NotebookLM ti ha chiarito torna dentro l'app e ti viene richiesto fra
-qualche giorno, quando serve davvero ricordarlo.
+Resta anche il ripiego a mano (*copia la domanda*): la libreria non è
+ufficiale e Google può cambiare le API interne. Se si rompe, il
+copia-incolla funziona ancora.
+
+**Requisiti per NotebookLM**
+
+Una volta sola, da terminale:
+
+```powershell
+pip install notebooklm-py
+notebooklm login
+```
+
+`notebooklm login` apre una finestra per l'accesso Google e salva i cookie in
+`~/.notebooklm/profiles/default/`. L'app riusa quell'accesso: nessuna chiave
+nel programma, nessun server. Se compare "NotebookLM non è autenticato",
+rilancia `notebooklm login`.
 
 **Integrazione Zotero**
 
