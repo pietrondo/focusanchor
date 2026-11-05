@@ -70,6 +70,59 @@ unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
     TRUE
 }
 
+/// Titoli delle finestre visibili, con il loro handle.
+///
+/// `EnumWindows` consegna gli handle come `isize`: qui si raccolgono in
+/// coppie perche' servono a portare avanti una finestra specifica.
+fn finestre_con_handle() -> Vec<(isize, String)> {
+    unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        if !IsWindowVisible(hwnd).as_bool() {
+            return TRUE;
+        }
+        let titolo = titolo_di(hwnd);
+        if !titolo.trim().is_empty() {
+            let raccolta = &mut *(lparam.0 as *mut Vec<(isize, String)>);
+            raccolta.push((hwnd.0 as isize, titolo));
+        }
+        TRUE
+    }
+
+    let mut raccolta: Vec<(isize, String)> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(
+            Some(callback),
+            LPARAM(&mut raccolta as *mut Vec<(isize, String)> as isize),
+        );
+    }
+    raccolta
+}
+
+/// Porta in primo piano la finestra che ha NotebookLM aperto.
+///
+/// Restituisce `false` se nessuna finestra lo ha aperto: in quel caso chi
+/// chiama apre il link nel browser. Serve a non creare una seconda scheda
+/// sullo stesso notebook, che farebbe perdere la conversazione in corso.
+pub fn porta_avanti_notebooklm() -> bool {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        BringWindowToTop, SetForegroundWindow, ShowWindow, SW_RESTORE,
+    };
+
+    let Some((handle, _)) = finestre_con_handle().into_iter().find(|(_, titolo)| {
+        let t = titolo.to_lowercase();
+        t.contains("notebooklm") || t.contains("notebook lm")
+    }) else {
+        return false;
+    };
+    let hwnd = HWND(handle as *mut core::ffi::c_void);
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_RESTORE);
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
+    }
+    true
+}
+
 /// Dimensione dello schermo principale, in pixel fisici.
 pub fn schermo() -> (f32, f32) {
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -121,5 +174,14 @@ mod test {
         for titolo in finestre() {
             assert!(!titolo.trim().is_empty());
         }
+    }
+
+    /// Se NotebookLM non e' aperto la funzione dice `false` e non fa niente:
+    /// chi chiama apre il link nel browser. Non deve mai andare in panic.
+    #[test]
+    fn cercare_notebooklm_non_esplode() {
+        // Non si puo' garantire che sia aperto o chiuso: serve solo che la
+        // chiamata sia sicura in entrambi i casi.
+        let _ = porta_avanti_notebooklm();
     }
 }

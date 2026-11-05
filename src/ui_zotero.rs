@@ -198,7 +198,11 @@ fn sezione_notebook(ui: &mut egui::Ui, stato: &mut StatoApp) {
         });
 
     if salva {
-        match crate::notebooklm::normalizza_link(&stato.campo_notebook) {
+        // Il link puo' arrivare come indirizzo pulito oppure sparso in una
+        // frase ("guarda questo notebooklm.google.com/notebook/xyz"): in
+        // entrambi i casi si riconosce.
+        let riconosciuto = crate::notebooklm::riconosci_link(&stato.campo_notebook);
+        match riconosciuto.or_else(|| crate::notebooklm::normalizza_link(&stato.campo_notebook)) {
             Some(link) => {
                 stato.campo_notebook = link.clone();
                 salva_link_con_persistenza(stato, &esame, &link, |stato| {

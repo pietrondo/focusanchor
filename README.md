@@ -88,6 +88,26 @@ Il pulsante **Spiegami questo passaggio** manda il testo copiato a OpenCode
 spiegazione nell'overlay. Usa l'autenticazione che hai già: nessuna chiave
 nel programma e nessuna dipendenza HTTP aggiuntiva.
 
+**Chiedere a NotebookLM**
+
+Il riquadro *Chiedi a NotebookLM* fa il giro completo, e non richiede che
+Zotero sia aperto:
+
+1. Scegli l'esame e scrivi la domanda che vuoi fare davvero ("fammi un
+   riassunto del capitolo 3").
+2. **Chiedi a NotebookLM** aggiunge il contesto dell'esame, copia la
+   domanda e apre il notebook di quell'esame. Se il notebook è già aperto
+   nel browser porta avanti quella finestra invece di aprire una scheda
+   doppia, così non perdi la conversazione.
+3. Incolli la domanda (`Ctrl+V`, Invio) e leggi la risposta.
+4. Copi la risposta, torni nell'app e premi **Incolla la risposta**.
+5. **Salva come carta di ripasso**: la spiegazione entra nel ripasso
+   dilazionato, con la tua domanda davanti e la spiegazione dietro.
+
+Il punto è che la spiegazione non finisce più nel vuoto: quello che
+NotebookLM ti ha chiarito torna dentro l'app e ti viene richiesto fra
+qualche giorno, quando serve davvero ricordarlo.
+
 **Integrazione Zotero**
 
 - Legge il database locale di Zotero con uno snapshot coerente (API di backup
@@ -144,7 +164,6 @@ Durante la sessione:
   sottolineature e i tuoi riassunti, da caricare su NotebookLM. **📂 Mostra il
   file** lo apre già selezionato in Esplora file, così lo trascini nel
   notebook senza cercarlo.
-
 L'overlay si apre nell'angolo in basso a destra, così non copre le schede e la
 barra degli strumenti di Zotero. Puoi comunque trascinarlo dove preferisci.
 

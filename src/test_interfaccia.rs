@@ -438,6 +438,93 @@ mod test_appelli {
 }
 
 #[cfg(test)]
+mod test_notebooklm {
+    use crate::state::StatoApp;
+    use eframe::egui;
+
+    /// Il pannello "Chiedi a NotebookLM" deve comparire nel setup con gli
+    /// esami che hanno una scheda, senza richiedere Zotero.
+    #[test]
+    fn il_pannello_chiedi_compare_senza_zotero() {
+        let ctx = egui::Context::default();
+        let mut stato = StatoApp::nuovo();
+        stato.config.esami.clear();
+        stato.config.esami.insert(
+            "Storia romana".into(),
+            crate::config::InfoEsame {
+                data_esame: "09/12/2026".into(),
+                ..Default::default()
+            },
+        );
+        // Nessuna collezione Zotero: il pannello deve funzionare lo stesso.
+
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(620.0, 860.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato);
+                });
+            },
+        );
+        let testi: Vec<&str> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(testi.iter().any(|t| t.contains("Storia romana")), "{testi:?}");
+        assert!(testi.iter().any(|t| t.contains("Chiedi a NotebookLM")), "{testi:?}");
+        assert!(testi.iter().any(|t| t.contains("Incolla la risposta")), "{testi:?}");
+    }
+
+    /// Senza esami con una scheda il pannello spiega cosa manca invece di
+    /// restare vuoto.
+    #[test]
+    fn senza_esami_il_pannello_spiega_cosa_manca() {
+        let ctx = egui::Context::default();
+        let mut stato = StatoApp::nuovo();
+        stato.config.esami.clear();
+
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(620.0, 860.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato);
+                });
+            },
+        );
+        let testi: Vec<&str> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            testi.iter().any(|t| t.contains("Nessun esame con una scheda")),
+            "{testi:?}"
+        );
+    }
+}
+
+#[cfg(test)]
 mod test_link {
     use crate::state::StatoApp;
     use crate::zotero::Collezione;

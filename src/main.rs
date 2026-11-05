@@ -32,6 +32,7 @@ mod ui;
 mod ui_ai;
 mod ui_appelli;
 mod ui_archivi;
+mod ui_notebooklm;
 mod ui_audio;
 mod ui_azioni;
 mod ui_caricamento;

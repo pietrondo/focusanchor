@@ -91,6 +91,23 @@ pub struct StatoApp {
     pub anteprima_notebooklm: Option<(String, String)>,
     /// Testo del campo "parcheggio pensieri".
     pub campo_pensiero: String,
+    /// Domanda libera da mandare a NotebookLM per l'esame scelto.
+    ///
+    /// Sta nello stato perche' un buffer locale verrebbe ricreato a ogni
+    /// frame e la domanda digitata sparirebbe.
+    pub campo_domanda: String,
+    /// Domanda effettivamente mandata a NotebookLM, per l'ultima risposta.
+    ///
+    /// Diventa la faccia della carta di ripasso: "fammi un riassunto del
+    /// capitolo 3" e' una domanda, il testo della risposta no.
+    pub domanda_notebooklm: String,
+    /// Esame scelto per la domanda a NotebookLM.
+    ///
+    /// Non dipende da Zotero: si puo' chiedere anche a Zotero chiuso, per
+    /// qualsiasi esame che abbia una scheda.
+    pub esame_notebooklm: Option<String>,
+    /// Risposta di NotebookLM riportata dentro l'app, per esame.
+    pub risposta_notebooklm: Option<(String, String)>,
     /// Messaggio di conferma mostrato dopo aver salvato un pensiero.
     pub conferma: Option<(String, Instant)>,
     /// Avviso mostrato in giallo (per esempio permessi mancanti).
@@ -152,6 +169,10 @@ impl StatoApp {
             campo_notebook: String::new(),
             anteprima_notebooklm: None,
             campo_pensiero: String::new(),
+            campo_domanda: String::new(),
+            domanda_notebooklm: String::new(),
+            esame_notebooklm: None,
+            risposta_notebooklm: None,
             conferma: None,
             avviso: None,
             codice_sblocco: None,
@@ -252,6 +273,15 @@ impl StatoApp {
         } else {
             None
         }
+    }
+
+    /// Ricarica la memoria di ripasso dopo aver salvato una carta.
+    ///
+    /// La carta appena salvata non si vedrebbe fino alla prossima apertura
+    /// dell'esame: il pannello mostrava un conteggio fermo.
+    pub fn riepilogo_notebooklm(&mut self) {
+        self.memoria = crate::carte::carica(&self.nome_esame());
+        self.memoria_esame = self.nome_esame();
     }
 
     /// Salva la configurazione, includendo le liste editate dall'utente.

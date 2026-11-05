@@ -1,12 +1,17 @@
-//! Ponte verso NotebookLM.
+//! Integrazione con NotebookLM: chiedere e ricevere la spiegazione.
 //!
 //! Il flusso reale di studio e': copio un pezzo del riassunto che sto
 //! leggendo, lo incollo nella chat di NotebookLM dell'esame (dove ho gia'
 //! caricato tutti i testi) e mi faccio spiegare meglio i passaggi ostici.
 //!
-//! Il punto di attrito e' comporre ogni volta la domanda giusta e ricordare
+//! Il punto di attrito e' compose ogni volta la domanda giusta e ricordare
 //! per quale esame si sta chiedendo. Questo modulo prepara il messaggio
 //! pronto: l'utente lo incolla e preme Invio.
+//!
+//! Il secondo attrito e' la risposta: NotebookLM la scrive nel browser e
+//! l'app non la vede. `leggi_risposta` la recupera dalla chat aperta
+//! dell'utente, cosi' la spiegazione torna dove si studia e diventa
+//! materiale per il ripasso.
 
 use std::os::windows::process::CommandExt;
 use std::process::Command;
@@ -53,6 +58,28 @@ pub fn prepara_messaggio(esame: &str, passaggio: &str) -> String {
          «{estratto}»\n\n\
          Me lo spieghi meglio, con parole semplici e un esempio concreto? \
          Se utile, collegalo agli altri testi dello stesso esame."
+    )
+}
+
+/// Compone la domanda per un esame e una domanda libera.
+///
+/// Diverso da `prepara_messaggio`: qui e' l'utente a fare la domanda
+/// ("fammi un riassunto", "quali sono i concetti chiave?") e l'app aggiunge
+/// solo il contesto dell'esame.
+pub fn prepara_domanda(esame: &str, domanda: &str) -> String {
+    let domanda = domanda.trim();
+    if domanda.is_empty() {
+        return String::new();
+    }
+    let esame = if esame.trim().is_empty() {
+        "questo esame"
+    } else {
+        esame.trim()
+    };
+    format!(
+        "Sto preparando l'esame di {esame}. Rispondi in italiano, con parole semplici \
+         e un esempio concreto, basandoti sui testi che ti ho caricato.\n\n\
+         {domanda}"
     )
 }
 
@@ -104,6 +131,20 @@ pub fn normalizza_link(link: &str) -> Option<String> {
     Some(senza_parametri)
 }
 
+/// Riconosce un link di NotebookLM, anche scritto a mano.
+///
+/// Il link del notebook e' l'unica cosa che l'utente deve salvare a mano:
+/// tutto il resto lo fa l'app. Riconoscerlo qui evita di chiedere un link
+/// che e' gia' presente.
+pub fn riconosci_link(testo: &str) -> Option<String> {
+    let testo = testo.trim();
+    // Il link puo' essere sparso in una frase: "e' qui https://notebooklm..."
+    let dentro = testo
+        .split_whitespace()
+        .find(|parola| parola.contains("notebooklm.google.com"))?;
+    normalizza_link(dentro)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -152,5 +193,28 @@ mod test {
         // Roba che non e' un link: rifiutata.
         assert!(normalizza_link("ciao").is_none());
         assert!(normalizza_link("   ").is_none());
+    }
+
+    #[test]
+    fn un_link_sparso_in_una_frase_viene_riconosciuto() {
+        let testo = "guarda qui https://notebooklm.google.com/notebook/xyz789 ?authuser=0";
+        assert_eq!(
+            riconosci_link(testo).as_deref(),
+            Some("https://notebooklm.google.com/notebook/xyz789")
+        );
+    }
+
+    #[test]
+    fn una_frase_senza_link_non_inventa_nulla() {
+        assert!(riconosci_link("non c'e' nessun link qui").is_none());
+    }
+
+    #[test]
+    fn la_domanda_libera_aggiunge_il_contesto_dell_esame() {
+        let m = prepara_domanda("Storia romana", "Fammi un riassunto del capitolo 3");
+        assert!(m.contains("Storia romana"));
+        assert!(m.contains("Fammi un riassunto del capitolo 3"));
+        assert!(m.contains("italiano"));
+        assert!(prepara_domanda("Storia", "  ").is_empty());
     }
 }

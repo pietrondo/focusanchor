@@ -7,7 +7,7 @@ use eframe::egui;
 use crate::audio::MotoreAudio;
 use crate::blocker::Segnale;
 use crate::state::{StatoApp, DURATA_MAXIMA};
-use crate::ui::{avviso, barra_xp, notifica, scheda, ACCENTO, ARANCIO, GIALLO, TENUE, VERDE};
+use crate::ui::{avviso, barra_xp, notifica, scheda, ACCENTO, ARANCIO, GIALLO, TENUE, VERDE, VIOLA};
 
 /// Disegna la modalita' Configurazione (prima della sessione).
 pub fn disegna(
@@ -65,6 +65,10 @@ pub fn disegna(
 
                     scheda(ui, l, "📚", "Esame e testi", VERDE, |ui| {
                         crate::ui_zotero::sezione_esame(ui, stato);
+                    });
+
+                    scheda(ui, l, "📓", "Chiedi a NotebookLM", VIOLA, |ui| {
+                        crate::ui_notebooklm::sezione_chiedi(ui, stato);
                     });
 
                     scheda(ui, l, "⏱", "Durata", ACCENTO, |ui| {
