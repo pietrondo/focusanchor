@@ -26,14 +26,39 @@ pub fn disegna(
             ui.add_space(2.0);
             intestazione(ui, stato);
             ui.add_space(10.0);
+            pulsante_avvia(ui, stato, audio, mittente);
+            ui.add_space(6.0);
 
             // La larghezza si calcola qui fuori: dentro lo ScrollArea
             // potrebbe essere infinita.
             let l = crate::ui::larghezza_schede(ui);
+
+            if let Some(r) = &stato.ultimo_riepilogo {
+                scheda(ui, l, "✓", "Sessione completata", VERDE, |ui| {
+                    ui.label(egui::RichText::new(&r.esame).strong());
+                    ui.label(format!(
+                        "{} min · {} XP · {} distrazioni · {} blocchi",
+                        r.minuti, r.xp, r.distrazioni, r.blocchi
+                    ));
+                    if !r.tempo_documenti.is_empty() {
+                        ui.label("Tempo per documento:");
+                        for (titolo, secondi) in &r.tempo_documenti {
+                            ui.label(format!("{titolo}: {:02}:{:02}", secondi / 60, secondi % 60));
+                        }
+                    }
+                });
+            }
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     let disponibili = !stato.collezioni.is_empty();
+
+                    // Gli appelli vengono per primi: e' la domanda "quando
+                    // devo finire" e decide quale obiettivo scegliere.
+                    scheda(ui, l, "📅", "I tuoi appelli", ACCENTO, |ui| {
+                        crate::ui_appelli::sezione_appelli(ui, stato);
+                    });
+
                     scheda(ui, l, "🎯", "Obiettivo", ACCENTO, |ui| {
                         sezione_obiettivo(ui, stato, disponibili);
                     });
@@ -50,20 +75,13 @@ pub fn disegna(
                         crate::ui_audio::sezione_audio(ui, stato, audio);
                     });
 
-                    scheda(ui, l, "📂", "I tuoi file", TENUE, |ui| {
-                        crate::ui_archivi::sezione_archivi(ui, stato);
-                    });
-
-                    scheda(ui, l, "🔁", "Ripasso", GIALLO, |ui| {
-                        crate::ui_ripasso::sezione_ripasso(ui, stato);
-                    });
-
-                    scheda(ui, l, "📈", "Storico", VERDE, |ui| {
-                        crate::ui_storico::sezione_storico(ui, stato);
-                    });
-
-                    ui.add_space(4.0);
-                    pulsante_avvia(ui, stato, audio, mittente);
+                    egui::CollapsingHeader::new("Altre opzioni: archivio, ripasso e storico")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            scheda(ui, l, "📂", "I tuoi file", TENUE, |ui| crate::ui_archivi::sezione_archivi(ui, stato));
+                            scheda(ui, l, "🔁", "Ripasso", GIALLO, |ui| crate::ui_ripasso::sezione_ripasso(ui, stato));
+                            scheda(ui, l, "📈", "Storico", VERDE, |ui| crate::ui_storico::sezione_storico(ui, stato));
+                        });
 
                     notifica(ui, stato.notifica_attiva());
                     avviso(ui, &stato.avviso);
@@ -84,7 +102,7 @@ fn intestazione(ui: &mut egui::Ui, stato: &StatoApp) {
                     .color(crate::ui::TESTO),
             );
             ui.label(
-                egui::RichText::new("Un obiettivo alla volta. Cinque esami. Dicembre.")
+                egui::RichText::new("Una sessione alla volta. Il prossimo passo è qui.")
                     .size(13.0)
                     .color(TENUE),
             );
@@ -92,6 +110,12 @@ fn intestazione(ui: &mut egui::Ui, stato: &StatoApp) {
     });
     ui.add_space(8.0);
     barra_xp(ui, stato);
+    // Una riga sola con il prossimo appello: l'informazione che decide
+    // cosa studiare oggi deve stare senza scorrere.
+    if let Some((giorni, esami)) = crate::appelli::prossimo(&stato.config) {
+        let testo = crate::appelli::testo_conto(giorni, &esami);
+        ui.label(egui::RichText::new(testo).size(13.0).color(ARANCIO));
+    }
 }
 
 /// Campo di testo con l'obiettivo, oppure la selezione dei testi.

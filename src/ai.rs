@@ -216,11 +216,9 @@ fn esegui(modello: &str, prompt: &str) -> Esito {
 pub fn ripulisci(uscita: &str) -> String {
     uscita
         .lines()
-        .filter(|riga| {
-            let r = riga.trim();
-            !(r.starts_with("> ") || r.is_empty() && false)
-        })
-        .map(|riga| rimuovi_ansi(riga))
+        .enumerate()
+        .filter(|(indice, riga)| !(*indice == 0 && riga.trim().starts_with("> ")))
+        .map(|(_, riga)| rimuovi_ansi(riga))
         .collect::<Vec<_>>()
         .join("\n")
         .trim()
@@ -287,6 +285,15 @@ mod test {
     fn l_intestazione_della_sessione_viene_tolta() {
         let uscita = "> build · deepseek-v4.1-flash\nLa risposta vera.\n";
         assert_eq!(ripulisci(uscita), "La risposta vera.");
+    }
+
+    #[test]
+    fn ripulisci_non_elimina_blockquote_della_risposta() {
+        let uscita = "> build · deepseek-v4.1-flash\n> Citazione rilevante.\nTesto successivo.";
+        assert_eq!(
+            ripulisci(uscita),
+            "> Citazione rilevante.\nTesto successivo."
+        );
     }
 
     #[test]

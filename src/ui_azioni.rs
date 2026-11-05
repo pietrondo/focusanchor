@@ -69,7 +69,10 @@ pub fn disegna(
             crate::audio::ModalitaAudio::RumoreMarrone => "🎵 Marrone",
             crate::audio::ModalitaAudio::Pioggia => "🎵 Pioggia",
             crate::audio::ModalitaAudio::PioggiaFile => "🎵 Naturale",
+            crate::audio::ModalitaAudio::PioggiaCitta => "🎵 Città",
+            crate::audio::ModalitaAudio::PioggiaDelicata => "🎵 Delicata",
             crate::audio::ModalitaAudio::Binaurale40 => "🎵 40Hz",
+            crate::audio::ModalitaAudio::Binaurale4 => "🎵 4Hz",
         };
         if ui
             .add(egui::Button::new(etichetta).min_size(egui::vec2(meta, 28.0)))

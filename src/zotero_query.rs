@@ -159,7 +159,17 @@ pub fn evidenziazioni_esame(
     let db = apri_snapshot(snapshot)?;
     // Il legame e': annotazione -> attachment (padre) -> item nella collezione.
     let query = format!(
-        "{DISCENDENTI}
+        "{DISCENDENTI},
+        elementi_esame(id) AS (
+            SELECT ci.itemID
+            FROM collectionItems ci
+            JOIN discendenti d ON d.id = ci.collectionID
+            UNION
+            SELECT ia.parentItemID
+            FROM itemAttachments ia
+            JOIN elementi_esame e ON e.id = ia.itemID
+            WHERE ia.parentItemID IS NOT NULL
+        )
         SELECT a.text, a.comment, i.dateAdded
         FROM itemAnnotations a
         JOIN items i ON i.itemID = a.itemID
@@ -167,8 +177,8 @@ pub fn evidenziazioni_esame(
         WHERE a.text IS NOT NULL AND a.text != ''
           AND (
             ?1 IS NULL
-            OR ia.parentItemID IN (SELECT id FROM discendenti)
-            OR ia.itemID IN (SELECT id FROM discendenti)
+            OR ia.parentItemID IN (SELECT id FROM elementi_esame)
+            OR ia.itemID IN (SELECT id FROM elementi_esame)
           )
         ORDER BY a.itemID DESC
         LIMIT ?2"

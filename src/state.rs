@@ -62,6 +62,8 @@ pub struct StatoApp {
     pub ai: crate::ai::Assistente,
     /// Sessioni concluse, lette da disco una volta sola.
     pub storico: Vec<crate::storico::SessioneRegistrata>,
+    /// Riepilogo dell'ultima sessione terminata, con dati effettivamente registrati.
+    pub ultimo_riepilogo: Option<crate::storico::SessioneRegistrata>,
     /// Collezioni Zotero, cioe' gli esami disponibili.
     pub collezioni: Vec<Collezione>,
     /// Esame scelto (identificativo della collezione).
@@ -85,6 +87,8 @@ pub struct StatoApp {
     /// Deve stare nello stato: un buffer locale verrebbe ricreato a ogni
     /// frame e l'incolla sparirebbe subito.
     pub campo_notebook: String,
+    /// Anteprima della scheda NotebookLM aperta nella schermata Materiali.
+    pub anteprima_notebooklm: Option<(String, String)>,
     /// Testo del campo "parcheggio pensieri".
     pub campo_pensiero: String,
     /// Messaggio di conferma mostrato dopo aver salvato un pensiero.
@@ -97,6 +101,11 @@ pub struct StatoApp {
     pub testo_sblocco: String,
     /// Numero di caratteri del testo di sblocco al frame precedente.
     pub lunghezza_precedente: usize,
+    /// Testo della data d'appello in editing, per esame.
+    ///
+    /// Deve stare nello stato: un buffer locale verrebbe ricreato a ogni
+    /// frame e la data digitata sparirebbe a meta' digitazione.
+    pub date_in_edizione: std::collections::BTreeMap<String, String>,
     /// Editor di dominio vietati (una voce per riga).
     pub testo_domini: String,
     /// Editor di parole chiave vietate (una voce per riga).
@@ -131,6 +140,7 @@ impl StatoApp {
             task: crate::task::GestoreTask::nuovo(),
             ai: crate::ai::Assistente::nuovo(),
             storico: crate::storico::carica(),
+            ultimo_riepilogo: None,
             collezioni: Vec::new(),
             esame_scelto: None,
             documenti_esame: Vec::new(),
@@ -140,12 +150,14 @@ impl StatoApp {
             evidenziazioni: Vec::new(),
             snapshot_zotero: None,
             campo_notebook: String::new(),
+            anteprima_notebooklm: None,
             campo_pensiero: String::new(),
             conferma: None,
             avviso: None,
             codice_sblocco: None,
             testo_sblocco: String::new(),
             lunghezza_precedente: 0,
+            date_in_edizione: std::collections::BTreeMap::new(),
             testo_domini,
             testo_parole,
         }
@@ -244,13 +256,23 @@ impl StatoApp {
 
     /// Salva la configurazione, includendo le liste editate dall'utente.
     pub fn salva_configurazione(&mut self) {
+        self.aggiorna_configurazione_da_stato();
+        salva_configurazione(&self.config);
+    }
+
+    /// Salva la configurazione restituendo un errore se la persistenza fallisce.
+    pub fn salva_configurazione_con_esito(&mut self) -> Result<(), String> {
+        self.aggiorna_configurazione_da_stato();
+        crate::config::salva_configurazione_con_esito(&self.config)
+    }
+
+    fn aggiorna_configurazione_da_stato(&mut self) {
         self.config.domini_vietati = righe_alla_lista(&self.testo_domini);
         self.config.parole_vietate = righe_alla_lista(&self.testo_parole);
         // Gli XP fanno parte della configurazione: senza questo si azzerano
         // a ogni riavvio e la gamification perde senso.
         self.config.xp_punti = self.xp.punti;
         self.config.xp_distrazioni = self.xp.distrazioni;
-        salva_configurazione(&self.config);
     }
 
     /// Aggiunge XP e li salva subito, cosi' un crash non li perde.

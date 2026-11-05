@@ -27,8 +27,14 @@ pub enum ModalitaAudio {
     Pioggia,
     /// Pioggia registrata, letta dal file accanto all'eseguibile.
     PioggiaFile,
+    /// Pioggia urbana Freesound CC0 incorporata.
+    PioggiaCitta,
+    /// Pioggia delicata Freesound CC0 incorporata.
+    PioggiaDelicata,
     /// Battito binaurale a 40 Hz per contrastare la sonnolenza.
     Binaurale40,
+    /// Battimento binaurale a 4 Hz, generato proceduralmente.
+    Binaurale4,
 }
 
 impl ModalitaAudio {
@@ -39,7 +45,10 @@ impl ModalitaAudio {
             ModalitaAudio::RumoreMarrone => "Rumore Marrone",
             ModalitaAudio::Pioggia => "Pioggia",
             ModalitaAudio::PioggiaFile => "Pioggia naturale",
+            ModalitaAudio::PioggiaCitta => "Pioggia in città",
+            ModalitaAudio::PioggiaDelicata => "Pioggia delicata",
             ModalitaAudio::Binaurale40 => "Sveglia 40Hz Anti-Sonno",
+            ModalitaAudio::Binaurale4 => "Binaurale 4 Hz",
         }
     }
 
@@ -49,19 +58,26 @@ impl ModalitaAudio {
             ModalitaAudio::Spenta => ModalitaAudio::RumoreMarrone,
             ModalitaAudio::RumoreMarrone => ModalitaAudio::Pioggia,
             ModalitaAudio::Pioggia => ModalitaAudio::PioggiaFile,
-            ModalitaAudio::PioggiaFile => ModalitaAudio::Binaurale40,
-            ModalitaAudio::Binaurale40 => ModalitaAudio::Spenta,
+            ModalitaAudio::PioggiaFile => ModalitaAudio::PioggiaCitta,
+            ModalitaAudio::PioggiaCitta => ModalitaAudio::PioggiaDelicata,
+            ModalitaAudio::PioggiaDelicata => ModalitaAudio::Binaurale40,
+            ModalitaAudio::Binaurale40 => ModalitaAudio::Binaurale4,
+            ModalitaAudio::Binaurale4 => ModalitaAudio::Spenta,
         }
     }
 
     /// Modalita' precedente nel ciclo del selettore.
+    #[allow(dead_code)]
     pub fn precedente(&self) -> Self {
         match self {
-            ModalitaAudio::Spenta => ModalitaAudio::Binaurale40,
+            ModalitaAudio::Spenta => ModalitaAudio::Binaurale4,
+            ModalitaAudio::Binaurale4 => ModalitaAudio::Binaurale40,
             ModalitaAudio::Pioggia => ModalitaAudio::RumoreMarrone,
             ModalitaAudio::PioggiaFile => ModalitaAudio::Pioggia,
+            ModalitaAudio::PioggiaCitta => ModalitaAudio::PioggiaFile,
+            ModalitaAudio::PioggiaDelicata => ModalitaAudio::PioggiaCitta,
             ModalitaAudio::RumoreMarrone => ModalitaAudio::Spenta,
-            ModalitaAudio::Binaurale40 => ModalitaAudio::RumoreMarrone,
+            ModalitaAudio::Binaurale40 => ModalitaAudio::PioggiaDelicata,
         }
     }
 
@@ -75,7 +91,10 @@ impl ModalitaAudio {
             ModalitaAudio::RumoreMarrone => "RumoreMarrone",
             ModalitaAudio::Pioggia => "Pioggia",
             ModalitaAudio::PioggiaFile => "PioggiaFile",
+            ModalitaAudio::PioggiaCitta => "PioggiaCitta",
+            ModalitaAudio::PioggiaDelicata => "PioggiaDelicata",
             ModalitaAudio::Binaurale40 => "Binaurale40",
+            ModalitaAudio::Binaurale4 => "Binaurale4",
         }
     }
 
@@ -83,9 +102,12 @@ impl ModalitaAudio {
     pub fn da_nome(nome: &str) -> Self {
         match nome {
             "Binaurale40" => ModalitaAudio::Binaurale40,
+            "Binaurale4" => ModalitaAudio::Binaurale4,
             "Spenta" => ModalitaAudio::Spenta,
             "Pioggia" => ModalitaAudio::Pioggia,
             "PioggiaFile" => ModalitaAudio::PioggiaFile,
+            "PioggiaCitta" => ModalitaAudio::PioggiaCitta,
+            "PioggiaDelicata" => ModalitaAudio::PioggiaDelicata,
             _ => ModalitaAudio::RumoreMarrone,
         }
     }
@@ -93,6 +115,47 @@ impl ModalitaAudio {
     /// Vero se la modalita' produce suono.
     pub fn attiva(&self) -> bool {
         !matches!(self, ModalitaAudio::Spenta)
+    }
+}
+
+#[cfg(test)]
+mod test_modalita_audio {
+    use super::ModalitaAudio;
+
+    #[test]
+    fn include_scelte_binaurali_4_e_40_hz_nel_ciclo_e_nella_configurazione() {
+        assert_eq!(
+            ModalitaAudio::PioggiaDelicata.successiva(),
+            ModalitaAudio::Binaurale40
+        );
+        assert_eq!(
+            ModalitaAudio::Binaurale40.successiva(),
+            ModalitaAudio::Binaurale4
+        );
+        assert_eq!(
+            ModalitaAudio::Binaurale4.successiva(),
+            ModalitaAudio::Spenta
+        );
+        assert_eq!(
+            ModalitaAudio::da_nome("Binaurale4"),
+            ModalitaAudio::Binaurale4
+        );
+    }
+
+    #[test]
+    fn le_piogge_bundled_sono_selezionabili_e_persistono_in_configurazione() {
+        assert_eq!(
+            ModalitaAudio::PioggiaFile.successiva(),
+            ModalitaAudio::PioggiaCitta
+        );
+        assert_eq!(
+            ModalitaAudio::PioggiaCitta.successiva(),
+            ModalitaAudio::PioggiaDelicata
+        );
+        for scelta in [ModalitaAudio::PioggiaCitta, ModalitaAudio::PioggiaDelicata] {
+            assert!(scelta.attiva());
+            assert_eq!(ModalitaAudio::da_nome(scelta.nome()), scelta);
+        }
     }
 }
 
@@ -190,10 +253,17 @@ impl MotoreAudio {
         sink.set_volume(self.volume_sottofondo);
         match modalita {
             ModalitaAudio::Binaurale40 => sink.append(Binaurale40::nuovo()),
+            ModalitaAudio::Binaurale4 => sink.append(Binaurale40::nuovo_con_differenza(4.0)),
             ModalitaAudio::Pioggia => sink.append(Pioggia::nuovo()),
             ModalitaAudio::PioggiaFile => sink.append(SuonoFile::apri(
                 crate::config::cartella_dati().join(FILE_PIOGGIA),
             )?),
+            ModalitaAudio::PioggiaCitta => sink.append(SuonoFile::incorporato(include_bytes!(
+                "../assets/audio/rain-city.mp3"
+            ))?),
+            ModalitaAudio::PioggiaDelicata => sink.append(SuonoFile::incorporato(include_bytes!(
+                "../assets/audio/gentle-rain.mp3"
+            ))?),
             _ => sink.append(RumoreMarrone::nuovo()),
         }
         self.sink_sottofondo = Some(sink);

@@ -23,16 +23,8 @@ pub const TONO_SINISTRO: f32 = 200.0;
 /// Frequenza del tono destro nel binaural.
 pub const TONO_DESTRO: f32 = 240.0;
 
-/// Ampiezza del tono nel binaural.
-///
-/// Deve dominare il rumore di fondo, altrimenti il battimento non si percepisce.
+/// Ampiezza dei toni puri nel binaurale.
 const AMPIEZZA_TONO: f32 = 0.30;
-
-/// Fattore di scala del rumore marrone dentro il binaural.
-///
-/// Il rumore ha RMS circa 0.2: moltiplicato per 0.10 resta a 0.02, ben sotto
-/// il tono, e il suo unico compito e' rendere il suono meno meccanico.
-const RUMORE_NEL_BINAURAL: f32 = 0.10;
 
 /// Sorgente audio di rumore marrone, generata in tempo reale.
 ///
@@ -89,15 +81,9 @@ impl Source for RumoreMarrone {
 
 /// Sorgente binaurale a 40 Hz: due toni, uno per orecchio.
 ///
-/// L'orecchio sinistro riceve 200 Hz, quello destro 240 Hz. Il cervello
-/// percepisce la differenza di 40 Hz come un battito ritmico, che sostiene
-/// la vigilanza senza il fastidio di un suono acuto.
-///
-/// Sotto ai due toni c'e' un rumore marrone leggero, che rende il suono
-/// meno meccanico e piu' tollerabile per un ascolto prolungato.
+/// L'orecchio sinistro riceve un tono puro a 200 Hz e quello destro a 240 Hz;
+/// la differenza fra le due frequenze produce il battimento percepito di 40 Hz.
 pub struct Binaurale40 {
-    /// Generatore del rumore di fondo.
-    rumore: RumoreMarrone,
     /// Fase corrente del tono sinistro.
     fase_sinistra: f32,
     /// Fase corrente del tono destro.
@@ -113,13 +99,17 @@ pub struct Binaurale40 {
 impl Binaurale40 {
     /// Crea il generatore binaurale a 40 Hz.
     pub fn nuovo() -> Self {
+        Self::nuovo_con_differenza(TONO_DESTRO - TONO_SINISTRO)
+    }
+
+    /// Crea il binaurale con una differenza di frequenza esplicita.
+    pub fn nuovo_con_differenza(differenza_hz: f32) -> Self {
         let frequenza = FREQUENZA as f32;
         Self {
-            rumore: RumoreMarrone::nuovo(),
             fase_sinistra: 0.0,
             fase_destra: 0.0,
             passo_sinistro: 2.0 * std::f32::consts::PI * TONO_SINISTRO / frequenza,
-            passo_destro: 2.0 * std::f32::consts::PI * TONO_DESTRO / frequenza,
+            passo_destro: 2.0 * std::f32::consts::PI * (TONO_SINISTRO + differenza_hz) / frequenza,
             canale_sinistro: true,
         }
     }
@@ -129,19 +119,15 @@ impl Iterator for Binaurale40 {
     type Item = f32;
 
     fn next(&mut self) -> Option<f32> {
-        // Il rumore di fondo e' tenuto volutamente molto basso: il tono
-        // deve restare il segnale dominante, altrimenti il battimento da 40 Hz
-        // (che e' un fenomeno sottile) verrebbe mascherato dal rumore.
-        let rumore = self.rumore.next().unwrap_or(0.0) * RUMORE_NEL_BINAURAL;
         let campione = if self.canale_sinistro {
-            let valore = self.fase_sinistra.sin() * AMPIEZZA_TONO + rumore;
+            let valore = self.fase_sinistra.sin() * AMPIEZZA_TONO;
             self.fase_sinistra += self.passo_sinistro;
             if self.fase_sinistra > 2.0 * std::f32::consts::PI {
                 self.fase_sinistra -= 2.0 * std::f32::consts::PI;
             }
             valore
         } else {
-            let valore = self.fase_destra.sin() * AMPIEZZA_TONO + rumore;
+            let valore = self.fase_destra.sin() * AMPIEZZA_TONO;
             self.fase_destra += self.passo_destro;
             if self.fase_destra > 2.0 * std::f32::consts::PI {
                 self.fase_destra -= 2.0 * std::f32::consts::PI;
@@ -234,10 +220,14 @@ mod test {
     #[test]
     fn il_binaural_alterna_i_due_canali() {
         let mut sorgente = Binaurale40::nuovo();
-        let primo = sorgente.next().unwrap();
-        let secondo = sorgente.next().unwrap();
-        // I due canali devono essere diversi: e' il cuore del binaural.
-        assert_ne!(primo, secondo);
+        let sinistro_iniziale = sorgente.next().unwrap();
+        let destro_iniziale = sorgente.next().unwrap();
+        let sinistro_successivo = sorgente.next().unwrap();
+        let destro_successivo = sorgente.next().unwrap();
+
+        assert_eq!(sinistro_iniziale, 0.0);
+        assert_eq!(destro_iniziale, 0.0);
+        assert_ne!(sinistro_successivo, destro_successivo);
     }
 
     #[test]
@@ -269,17 +259,40 @@ mod test {
         // Misura gli attraversamenti dello zero separando i due canali: il
         // destro deve oscillare piu' del sinistro.
         //
-        // Nota: i campioni sono alternati (sinistro, destro, ...), quindi
-        // ogni canale viene campionato a meta' della frequenza di campionamento.
+        // Un secondo di audio stereo contiene `FREQUENZA` frame, cioe' due
+        // campioni per frame: uno per ciascun orecchio.
         let mut sorgente = Binaurale40::nuovo();
-        let campioni = FREQUENZA as usize;
+        let campioni = FREQUENZA as usize * CANALI as usize;
         let mut sinistra = 0usize;
         let mut destra = 0usize;
         let mut segno_s = 0i8;
         let mut segno_d = 0i8;
+        let mut fase_s = 0.0_f32;
+        let mut fase_d = 0.0_f32;
+        let passo_s = 2.0 * std::f32::consts::PI * TONO_SINISTRO / FREQUENZA as f32;
+        let passo_d = 2.0 * std::f32::consts::PI * TONO_DESTRO / FREQUENZA as f32;
 
         for indice in 0..campioni {
             let campione = sorgente.next().unwrap();
+            let atteso = if indice % 2 == 0 {
+                let atteso = fase_s.sin() * AMPIEZZA_TONO;
+                fase_s += passo_s;
+                if fase_s > 2.0 * std::f32::consts::PI {
+                    fase_s -= 2.0 * std::f32::consts::PI;
+                }
+                atteso
+            } else {
+                let atteso = fase_d.sin() * AMPIEZZA_TONO;
+                fase_d += passo_d;
+                if fase_d > 2.0 * std::f32::consts::PI {
+                    fase_d -= 2.0 * std::f32::consts::PI;
+                }
+                atteso
+            };
+            assert!(
+                (campione - atteso).abs() < 0.000001,
+                "campione {indice} non corrisponde al tono puro: {campione} != {atteso}"
+            );
             let segno = if campione >= 0.0 { 1 } else { -1 };
             if indice % 2 == 0 {
                 if segno_s != 0 && segno != segno_s {
@@ -294,19 +307,23 @@ mod test {
             }
         }
 
-        // Campionato a 22050 Hz: 200 Hz danno ~200 attraversamenti al secondo,
-        // 240 Hz ne danno ~240. Il rumore non deve perturbarli.
+        // Zero crossings occur twice per sine-wave cycle.
+        let frequenza_sinistra = sinistra as f32 / 2.0;
+        let frequenza_destra = destra as f32 / 2.0;
         assert!(
-            destra > sinistra + 15,
-            "il canale destro deve oscillare piu' del sinistro (sin={sinistra}, des={destra})"
+            (195.0..=205.0).contains(&frequenza_sinistra),
+            "il canale sinistro deve stare vicino a 200 Hz ({} Hz)",
+            frequenza_sinistra
         );
         assert!(
-            (170..230).contains(&sinistra),
-            "il canale sinistro deve stare vicino a 200 Hz (sin={sinistra})"
+            (235.0..=245.0).contains(&frequenza_destra),
+            "il canale destro deve stare vicino a 240 Hz ({} Hz)",
+            frequenza_destra
         );
         assert!(
-            (205..275).contains(&destra),
-            "il canale destro deve stare vicino a 240 Hz (des={destra})"
+            ((frequenza_destra - frequenza_sinistra) - 40.0).abs() <= 5.0,
+            "il battimento deve essere vicino a 40 Hz, non {} Hz",
+            frequenza_destra - frequenza_sinistra
         );
     }
 }

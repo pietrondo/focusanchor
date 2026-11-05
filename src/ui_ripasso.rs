@@ -7,7 +7,7 @@
 
 use eframe::egui;
 
-use crate::carte::{self, Giudizio};
+use crate::carte::{self, Giudizio, TETTO_GIORNALIERO};
 use crate::state::StatoApp;
 use crate::ui::{ACCENTO, BORDO, GIALLO, TENUE, VERDE};
 
@@ -16,6 +16,7 @@ pub fn sezione_ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
     stato.sincronizza_memoria();
     let oggi = carte::oggi();
     let scadute = stato.memoria.scadute(&oggi);
+    let da_oggi = stato.memoria.scadute_limite(&oggi, TETTO_GIORNALIERO);
     let totale = stato.memoria.carte.len();
 
     if totale == 0 {
@@ -46,6 +47,19 @@ pub fn sezione_ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
         return;
     }
 
+    // Il tetto: meglio 15 carte fatte bene che 40 abbandonate a meta'.
+    if scadute.len() > da_oggi.len() {
+        let rimaste = scadute.len() - da_oggi.len();
+        ui.label(
+            egui::RichText::new(format!(
+                "Oggi ne fai {TETTO_GIORNALIERO}: le altre {rimaste} aspettano domani, \
+                 non si perdono."
+            ))
+            .size(12.0)
+            .color(TENUE),
+        );
+    }
+
     if stato.ripasso_indice.is_none() {
         if ui
             .add(
@@ -54,7 +68,7 @@ pub fn sezione_ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
             )
             .clicked()
         {
-            stato.ripasso_indice = stato.memoria.prossima_scaduta(&oggi, None);
+            stato.ripasso_indice = stato.memoria.prossima_del_giro(&oggi, None);
             stato.ripasso_risposta_visibile = false;
         }
         return;
@@ -74,7 +88,8 @@ pub fn ripasso_rapido(ui: &mut egui::Ui, stato: &mut StatoApp, larghezza: f32) {
     }
     ui.add_space(6.0);
     if stato.ripasso_indice.is_none() {
-        let quante = stato.memoria.scadute(&oggi).len();
+        // Il pulsante promette il giro di oggi, non tutto il backlog.
+        let quante = stato.memoria.scadute_limite(&oggi, carte::TETTO_GIORNALIERO).len();
         if ui
             .add(
                 egui::Button::new(format!("🔁 {quante} carte da ripassare"))
@@ -82,7 +97,7 @@ pub fn ripasso_rapido(ui: &mut egui::Ui, stato: &mut StatoApp, larghezza: f32) {
             )
             .clicked()
         {
-            stato.ripasso_indice = stato.memoria.prossima_scaduta(&oggi, None);
+            stato.ripasso_indice = stato.memoria.prossima_del_giro(&oggi, None);
             stato.ripasso_risposta_visibile = false;
         }
         return;
@@ -210,5 +225,7 @@ fn giudica(stato: &mut StatoApp, indice: usize, giudizio: Giudizio, oggi: &str) 
         stato.avviso = Some(e);
     }
     stato.ripasso_risposta_visibile = false;
-    stato.ripasso_indice = stato.memoria.prossima_scaduta(oggi, Some(indice));
+    // Il giro si ferma al tetto: le carte oltre restano scadute e tornano
+    // domani. Meglio un giro finito che uno abbandonato a meta'.
+    stato.ripasso_indice = stato.memoria.prossima_del_giro(oggi, Some(indice));
 }

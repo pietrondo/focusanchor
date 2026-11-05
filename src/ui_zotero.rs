@@ -12,6 +12,12 @@ pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
         return;
     }
 
+    ui.label(
+        egui::RichText::new("MATERIALI")
+            .size(11.0)
+            .strong()
+            .color(TENUE),
+    );
     crate::ui_caricamento::pulsanti_caricamento(ui, stato);
     ui.add_space(10.0);
 
@@ -50,6 +56,24 @@ pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
         crate::ui_esami::cambia_esame(stato, nuovo_esame);
     }
 
+    ui.horizontal_wrapped(|ui| {
+        let collegato = stato.snapshot_zotero.is_some();
+        let colore = if collegato { VERDE } else { TENUE };
+        let stato_zotero = if collegato {
+            format!(
+                "Zotero · {} documenti · {} annotazioni",
+                stato.documenti_esame.len(),
+                stato.evidenziazioni.len()
+            )
+        } else {
+            "Zotero non caricato".to_string()
+        };
+        ui.label(egui::RichText::new(stato_zotero).size(12.0).color(colore));
+        if ui.small_button("🔄 Ricarica da Zotero").clicked() {
+            crate::ui_esami::ricarica_testi(stato);
+        }
+    });
+
     ui.add_space(6.0);
     sezione_notebook(ui, stato);
 
@@ -84,13 +108,13 @@ fn sezione_notebook(ui: &mut egui::Ui, stato: &mut StatoApp) {
     let mut salva = false;
     let mut apri = false;
 
-    egui::CollapsingHeader::new("📓 Notebook NotebookLM di questo esame")
-        .default_open(salvato.is_empty())
+    egui::CollapsingHeader::new("📓 NotebookLM e pacchetto di studio")
+        .default_open(true)
         .show(ui, |ui| {
             ui.label(
                 egui::RichText::new(
-                    "Incolla il link del notebook dove hai caricato i testi dell'esame. \
-                     Verra' aperto quando premi «NotebookLM» in sessione.",
+                    "Il link è salvato per questo esame. Da qui puoi aprire il notebook \
+                     e preparare una scheda da caricare manualmente come fonte.",
                 )
                 .size(12.0)
                 .color(TENUE),
@@ -99,23 +123,87 @@ fn sezione_notebook(ui: &mut egui::Ui, stato: &mut StatoApp) {
                 .hint_text("https://notebooklm.google.com/notebook/…")
                 .desired_width(f32::INFINITY)
                 .show(ui);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button("💾 Salva link").clicked() {
                     salva = true;
                 }
-                if !salvato.is_empty() && ui.button("▶ Apri").clicked() {
+                if !salvato.is_empty() && ui.button("▶ Apri NotebookLM").clicked() {
                     apri = true;
                 }
+                if ui.button("Crea / aggiorna scheda").clicked() {
+                    crate::ui_archivi::genera_notebooklm(stato);
+                }
+                if ui.button("Anteprima scheda").clicked() {
+                    match crate::archivi::leggi_notebooklm_esame_result(&esame) {
+                        Ok(testo) if !testo.trim().is_empty() => {
+                            stato.anteprima_notebooklm =
+                                Some((crate::archivi::nome_file_notebooklm(&esame), testo));
+                            stato.avviso = None;
+                        }
+                        Ok(_) => crate::ui_archivi::segnala_errore_materiali(
+                            stato,
+                            "La scheda è vuota. Generala di nuovo prima dell'anteprima.",
+                        ),
+                        Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
+                    }
+                }
+                if ui.button("Copia scheda").clicked() {
+                    match crate::archivi::leggi_notebooklm_esame_result(&esame) {
+                        Ok(testo) if !testo.trim().is_empty() => {
+                            match crate::notebooklm::copia_negli_appunti(&testo) {
+                                Ok(()) => crate::ui_archivi::segnala_successo_materiali(
+                                    stato,
+                                    "Scheda copiata negli appunti.",
+                                ),
+                                Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
+                            }
+                        }
+                        Ok(_) => crate::ui_archivi::segnala_errore_materiali(
+                            stato,
+                            "La scheda è vuota. Generala di nuovo prima di copiarla.",
+                        ),
+                        Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
+                    }
+                }
+                let percorso = crate::archivi::percorso_notebooklm_esame(&esame);
+                if percorso.exists() && ui.button("Mostra file").clicked() {
+                    match crate::archivi::rivela_file(&percorso) {
+                        Ok(()) => stato.avviso = None,
+                        Err(e) => stato.avviso = Some(e),
+                    }
+                }
             });
+            let mut chiudi_anteprima = false;
+            if let Some((nome, contenuto)) = stato.anteprima_notebooklm.as_ref() {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Anteprima scheda").strong());
+                    if ui.small_button("Chiudi anteprima").clicked() {
+                        chiudi_anteprima = true;
+                    }
+                });
+                crate::ui::mostra_contenuto(ui, nome, contenuto);
+            }
+            if chiudi_anteprima {
+                stato.anteprima_notebooklm = None;
+            }
+            ui.label(
+                egui::RichText::new(
+                    "La scheda include le annotazioni Zotero disponibili e i riassunti. \
+                     NotebookLM non viene caricato automaticamente: dopo averla generata, \
+                     aggiungi il file come fonte nel notebook.",
+                )
+                .size(12.0)
+                .color(TENUE),
+            );
         });
 
     if salva {
         match crate::notebooklm::normalizza_link(&stato.campo_notebook) {
             Some(link) => {
                 stato.campo_notebook = link.clone();
-                stato.config.notebook_esami.insert(esame, link);
-                stato.salva_configurazione();
-                stato.aggiungi_notifica("Link del notebook salvato.");
+                salva_link_con_persistenza(stato, &esame, &link, |stato| {
+                    stato.salva_configurazione_con_esito()
+                });
             }
             None => {
                 stato.avviso = Some(
@@ -127,6 +215,41 @@ fn sezione_notebook(ui: &mut egui::Ui, stato: &mut StatoApp) {
     if apri {
         if let Err(e) = crate::notebooklm::apri(&salvato) {
             stato.avviso = Some(e);
+        } else {
+            crate::ui_archivi::segnala_successo_materiali(stato, "NotebookLM aperto nel browser.");
+        }
+    }
+}
+
+fn salva_link_con_persistenza(
+    stato: &mut StatoApp,
+    esame: &str,
+    link: &str,
+    persisti: impl FnOnce(&mut StatoApp) -> Result<(), String>,
+) {
+    let precedente = stato
+        .config
+        .notebook_esami
+        .insert(esame.to_string(), link.to_string());
+    let esito = persisti(stato);
+    if esito.is_err() {
+        if let Some(link_precedente) = precedente {
+            stato
+                .config
+                .notebook_esami
+                .insert(esame.to_string(), link_precedente);
+        } else {
+            stato.config.notebook_esami.remove(esame);
+        }
+    }
+    match esito {
+        Ok(()) => crate::ui_archivi::segnala_successo_materiali(
+            stato,
+            "Link del notebook salvato.",
+        ),
+        Err(e) => {
+            stato.conferma = None;
+            stato.avviso = Some(format!("Link non salvato: {e}"));
         }
     }
 }
@@ -156,13 +279,6 @@ fn sezione_testi(ui: &mut egui::Ui, stato: &mut StatoApp) {
             &format!("{}/{}", stato.testi_scelti.len(), MAX_TESTI),
             VERDE,
         );
-        if ui
-            .small_button("🔄")
-            .on_hover_text("Ricarica i testi: utile se ne hai aggiunti in Zotero")
-            .clicked()
-        {
-            crate::ui_esami::ricarica_testi(stato);
-        }
     });
     ui.label(
         egui::RichText::new(
@@ -241,5 +357,37 @@ fn elenco_testi(ui: &mut egui::Ui, stato: &mut StatoApp) {
         if let Err(e) = esito {
             stato.avviso = Some(e);
         }
+    }
+}
+
+#[cfg(test)]
+mod test_salvataggio_link {
+    use super::*;
+
+    #[test]
+    fn un_errore_di_persistenza_non_mostra_successo() {
+        let mut stato = StatoApp::nuovo();
+        stato.conferma = Some(("Link del notebook salvato.".into(), std::time::Instant::now()));
+        stato.config.notebook_esami.insert(
+            "Storia romana".into(),
+            "https://notebooklm.google.com/old".into(),
+        );
+
+        salva_link_con_persistenza(
+            &mut stato,
+            "Storia romana",
+            "https://notebooklm.google.com/new",
+            |_| Err("accesso negato".into()),
+        );
+
+        assert!(stato.conferma.is_none());
+        assert_eq!(
+            stato.config.notebook_esami.get("Storia romana").unwrap(),
+            "https://notebooklm.google.com/old"
+        );
+        assert!(stato
+            .avviso
+            .as_deref()
+            .is_some_and(|avviso| avviso.contains("accesso negato")));
     }
 }

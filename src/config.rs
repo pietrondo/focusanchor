@@ -1,6 +1,7 @@
 //! Configurazione persistente dell'applicazione (`config.json`).
 
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -163,10 +164,61 @@ pub fn carica_configurazione() -> Configurazione {
 
 /// Salva la configurazione su disco in formato leggibile.
 pub fn salva_configurazione(config: &Configurazione) {
-    let percorso = percorso_configurazione();
-    if let Ok(json) = serde_json::to_string_pretty(config) {
-        let _ = fs::write(percorso, json);
+    let _ = salva_configurazione_con_esito(config);
+}
+
+/// Salva la configurazione e restituisce l'errore se serializzazione o scrittura falliscono.
+pub fn salva_configurazione_con_esito(config: &Configurazione) -> Result<(), String> {
+    salva_configurazione_a(config, &percorso_configurazione())
+}
+
+fn salva_configurazione_a(config: &Configurazione, percorso: &std::path::Path) -> Result<(), String> {
+    salva_configurazione_a_con_writer(config, percorso, |file, bytes| file.write_all(bytes))
+}
+
+fn salva_configurazione_a_con_writer(
+    config: &Configurazione,
+    percorso: &std::path::Path,
+    scrivi: impl FnOnce(&mut File, &[u8]) -> io::Result<()>,
+) -> Result<(), String> {
+    let json = serde_json::to_vec_pretty(config)
+        .map_err(|e| format!("Serializzazione configurazione fallita: {e}"))?;
+    let directory = percorso.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let nome = percorso
+        .file_name()
+        .ok_or_else(|| "Percorso configurazione non valido".to_string())?
+        .to_string_lossy();
+    let temporaneo = directory.join(format!(
+        ".{nome}.{}.{}.tmp",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| format!("Orologio di sistema non valido: {e}"))?
+            .as_nanos()
+    ));
+
+    let mut temporaneo_creato = false;
+    let risultato = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporaneo)
+            .map_err(|e| format!("Creazione file temporaneo configurazione fallita: {e}"))?;
+        temporaneo_creato = true;
+        scrivi(&mut file, &json)
+            .map_err(|e| format!("Scrittura configurazione temporanea fallita: {e}"))?;
+        file.sync_all()
+            .map_err(|e| format!("Sincronizzazione configurazione temporanea fallita: {e}"))?;
+        drop(file);
+        fs::rename(&temporaneo, percorso)
+            .map_err(|e| format!("Sostituzione configurazione fallita: {e}"))?;
+        Ok(())
+    })();
+
+    if risultato.is_err() && temporaneo_creato {
+        let _ = fs::remove_file(&temporaneo);
     }
+    risultato
 }
 
 /// Converte un elenco di righe in una lista pulita di voci.
@@ -185,6 +237,65 @@ pub fn lista_alle_righe(lista: &[String]) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn errore_scrittura_configurazione_viene_propagato() {
+        let directory = std::env::temp_dir().join(format!(
+            "focusanchor-config-write-failure-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir(&directory).unwrap();
+
+        let result = salva_configurazione_a(&Configurazione::default(), &directory);
+
+        let _ = fs::remove_dir_all(&directory);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn errore_dopo_scrittura_parziale_sul_temporaneo_preserva_config_esistente() {
+        let directory = std::env::temp_dir().join(format!(
+            "focusanchor-config-atomic-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir(&directory).unwrap();
+        let destinazione = directory.join("config.json");
+        fs::write(&destinazione, "config precedente integra").unwrap();
+
+        let risultato = salva_configurazione_a_con_writer(
+            &Configurazione::default(),
+            &destinazione,
+            |file, bytes| {
+                use std::io::Write;
+                file.write_all(&bytes[..bytes.len().min(8)])?;
+                Err(std::io::Error::other("errore simulato dopo scrittura parziale"))
+            },
+        );
+
+        assert!(risultato.is_err());
+        assert_eq!(fs::read_to_string(&destinazione).unwrap(), "config precedente integra");
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn salvataggio_atomico_sostituisce_configurazione_esistente() {
+        let directory = std::env::temp_dir().join(format!(
+            "focusanchor-config-atomic-success-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir(&directory).unwrap();
+        let destinazione = directory.join("config.json");
+        fs::write(&destinazione, "config precedente").unwrap();
+
+        salva_configurazione_a(&Configurazione::default(), &destinazione).unwrap();
+
+        let testo = fs::read_to_string(&destinazione).unwrap();
+        assert!(serde_json::from_str::<Configurazione>(&testo).is_ok());
+        let _ = fs::remove_dir_all(&directory);
+    }
 
     #[test]
     fn ignora_le_righe_vuote_nelle_liste() {

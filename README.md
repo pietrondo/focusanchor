@@ -55,6 +55,27 @@ Per ogni esame puoi salvare la pagina del corso, i crediti, la modalità
 (scritto/orale), se è da non frequentante e la data dell'appello. La data
 diventa un conto alla rovescia mostrato durante lo studio.
 
+**Tutti gli appelli in una vista**
+
+Il riquadro *I tuoi appelli* mette in fila gli esami con la data, il conto
+alla rovescia, i crediti e quanti documenti hai già letto. La data si scrive
+come la vedi sul portale (`16/12/2026`) o in formato ISO (`2026-12-16`):
+sono lette allo stesso modo.
+
+Per ogni esame calcola anche il **piano di studio**: quanti minuti al giorno
+ti servono per arrivare all'appello. La stima usa il tuo tempo reale di
+lettura, non una media generica. Se il ritmo crolla, l'overlay te lo dice
+mentre studi.
+
+Cliccando il nome dell'esame lo selezioni: l'elenco degli appelli è anche il
+modo per scegliere cosa studiare adesso.
+
+**Ripasso con un tetto**
+
+Le carte da ripassare non sono infinite: 15 al giorno. Davanti a un backlog
+di quaranta carte si rinuncia, e le carte che saltano un giorno tornano il
+giorno dopo.
+
 **Ripasso dilazionato**
 
 Ogni risposta alle domande a tradimento diventa una carta in

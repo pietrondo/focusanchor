@@ -29,6 +29,8 @@ pub struct Sessione {
     pub durata: Duration,
     /// Obiettivo della sessione.
     pub obiettivo: String,
+    /// Conteggio cumulativo dei micro-task all'avvio, per ricavare il delta di sessione.
+    pub blocchi_inizio: u32,
     /// Ultimo richiamo vocale emesso.
     pub ultimo_richiamo: Duration,
     /// Momento in cui e' iniziata la pausa corrente, se in pausa.
@@ -44,6 +46,7 @@ impl Sessione {
             inizio: Instant::now(),
             durata,
             obiettivo,
+            blocchi_inizio: 0,
             ultimo_richiamo: Duration::ZERO,
             pausa_inizio: None,
             pausa_totale: Duration::ZERO,
@@ -105,7 +108,9 @@ impl StatoApp {
     /// impostato dalla GUI appena prima e deve restare visibile.
     pub fn avvia_sessione(&mut self, mittente: &Sender<Segnale>) {
         let durata = Duration::from_secs(self.config.durata_minuti as u64 * 60);
-        self.sessione = Some(Sessione::nuova(durata, self.config.obiettivo.clone()));
+        let mut sessione = Sessione::nuova(durata, self.config.obiettivo.clone());
+        sessione.blocchi_inizio = self.task.completati;
+        self.sessione = Some(sessione);
         // Il punto di partenza degli XP: lo storico registra il guadagno
         // della sessione, non il totale accumulato da sempre.
         self.xp_a_inizio = (self.xp.punti, self.xp.distrazioni);
@@ -122,7 +127,9 @@ impl StatoApp {
         if let Some(s) = self.sessione.take() {
             let minuti = (s.trascorso().as_secs() / 60) as u32;
             if minuti >= 1 {
-                if let Some(record) = self.sessione_da_registrare(minuti) {
+                let blocchi = self.task.completati.saturating_sub(s.blocchi_inizio);
+                if let Some(record) = self.sessione_da_registrare(minuti, blocchi) {
+                    self.ultimo_riepilogo = Some(record.clone());
                     crate::storico::registra(record);
                 }
             }
@@ -139,7 +146,11 @@ impl StatoApp {
     /// XP e distrazioni sono la differenza rispetto all'inizio della
     /// sessione: `self.xp` e' il totale di sempre, e scriverlo qui faceva
     /// sommare due volte lo stesso lavoro nel riepilogo.
-    fn sessione_da_registrare(&self, minuti: u32) -> Option<crate::storico::SessioneRegistrata> {
+    fn sessione_da_registrare(
+        &self,
+        minuti: u32,
+        blocchi: u32,
+    ) -> Option<crate::storico::SessioneRegistrata> {
         let (xp_inizio, distrazioni_inizio) = self.xp_a_inizio;
         Some(crate::storico::SessioneRegistrata {
             data: crate::storico::adesso(),
@@ -147,7 +158,7 @@ impl StatoApp {
             minuti,
             xp: (self.xp.punti - xp_inizio).max(0),
             distrazioni: self.xp.distrazioni.saturating_sub(distrazioni_inizio),
-            blocchi: self.task.completati,
+            blocchi,
             tempo_documenti: self.tempo_documenti.clone(),
         })
     }
@@ -261,10 +272,28 @@ mod test {
         stato.xp.registra_distrazione();
         assert_eq!(stato.xp.punti, 425);
 
-        let record = stato.sessione_da_registrare(25).expect("record");
+        let record = stato.sessione_da_registrare(25, 0).expect("record");
         assert_eq!(record.minuti, 25);
         assert_eq!(record.xp, 125);
         assert_eq!(record.distrazioni, 1);
+    }
+
+    #[test]
+    fn il_riepilogo_conta_solo_i_blocchi_completati_nella_sessione_corrente() {
+        let (mittente, _ricevitore) = std::sync::mpsc::channel();
+        let mut stato = StatoApp::nuovo();
+
+        for blocchi in [2, 1] {
+            stato.avvia_sessione(&mittente);
+            for _ in 0..blocchi {
+                stato.task.avvia(1);
+                stato.task.completa();
+            }
+            stato.sessione.as_mut().unwrap().inizio = Instant::now() - Duration::from_secs(61);
+            stato.termina_sessione();
+            assert_eq!(stato.ultimo_riepilogo.as_ref().unwrap().blocchi, blocchi);
+        }
+        assert_eq!(stato.task.completati, 3);
     }
 
     #[test]

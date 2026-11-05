@@ -5,7 +5,6 @@ use eframe::egui;
 use crate::archivi;
 use crate::state::StatoApp;
 use crate::ui::{mostra_contenuto, TENUE, VIOLA};
-use crate::zotero_query;
 
 /// Visualizzatori dei file e generazione del pacchetto NotebookLM.
 pub fn sezione_archivi(ui: &mut egui::Ui, stato: &mut StatoApp) {
@@ -14,7 +13,10 @@ pub fn sezione_archivi(ui: &mut egui::Ui, stato: &mut StatoApp) {
             mostra_contenuto(ui, "parcheggio_pensieri.txt", &archivi::leggi_parcheggio());
         }
         if ui.button("📄 Riassunti").clicked() {
-            mostra_contenuto(ui, "riassunto_studio.md", &archivi::leggi_riassunti());
+            match archivi::leggi_riassunti() {
+                Ok(testo) => mostra_contenuto(ui, "riassunto_studio.md", &testo),
+                Err(e) => segnala_errore_materiali(stato, &e),
+            }
         }
     });
     ui.horizontal(|ui| {
@@ -26,11 +28,15 @@ pub fn sezione_archivi(ui: &mut egui::Ui, stato: &mut StatoApp) {
         }
         if ui.button("📓 Scheda NotebookLM").clicked() {
             let esame = stato.nome_esame();
-            mostra_contenuto(
-                ui,
-                &archivi::nome_file_notebooklm(&esame),
-                &archivi::leggi_notebooklm_esame(&esame),
-            );
+            match archivi::leggi_notebooklm_esame_result(&esame) {
+                Ok(testo) if !testo.trim().is_empty() => mostra_contenuto(
+                    ui,
+                    &archivi::nome_file_notebooklm(&esame),
+                    &testo,
+                ),
+                Ok(_) => segnala_errore_materiali(stato, "La scheda NotebookLM è vuota."),
+                Err(e) => segnala_errore_materiali(stato, &e),
+            }
         }
     });
     ui.add_space(6.0);
@@ -112,22 +118,173 @@ fn sezione_anki(ui: &mut egui::Ui, stato: &mut StatoApp) {
 ///
 /// Le sottolineature vengono rilette da Zotero al momento, cosi' il file
 /// contiene anche quello che l'utente ha evidenziato durante la sessione.
-fn genera_notebooklm(stato: &mut StatoApp) {
-    let esame = stato.nome_esame();
+pub(crate) fn genera_notebooklm(stato: &mut StatoApp) {
+    let aggiornamento = aggiorna_materiali_notebooklm(stato);
+    genera_dopo_aggiornamento(stato, aggiornamento);
+}
 
-    // Ricarica le sottolineature dell'esame: possono essere cresciute.
-    if let (Some(snapshot), Some(id)) = (stato.snapshot_zotero.clone(), stato.esame_scelto) {
-        if let Ok(eviden) = zotero_query::evidenziazioni_esame(&snapshot, Some(id), 400) {
-            stato.evidenziazioni = eviden;
+fn aggiorna_materiali_notebooklm(stato: &mut StatoApp) -> Result<(), String> {
+    let Some(id) = stato.esame_scelto else {
+        crate::ui_esami::invalida_materiali_zotero(stato);
+        return Err("Seleziona un esame prima di generare la scheda.".into());
+    };
+    let cartella = crate::config::cartella_dati();
+    crate::ui_esami::aggiorna_materiali_zotero(stato, id, &cartella, 400)
+}
+
+fn genera_dopo_aggiornamento(stato: &mut StatoApp, aggiornamento: Result<(), String>) {
+    if let Err(e) = aggiornamento {
+        segnala_errore_materiali(stato, &format!("Scheda non aggiornata: {e}"));
+        return;
+    }
+    let esame = stato.nome_esame();
+    let riassunti = match archivi::leggi_riassunti() {
+        Ok(riassunti) => riassunti,
+        Err(e) => {
+            segnala_errore_materiali(stato, &e);
+            return;
         }
+    };
+    let risultato = archivi::genera_pacchetto_notebooklm(&esame, &stato.evidenziazioni, &riassunti);
+    finalizza_generazione(stato, &esame, risultato);
+}
+
+fn finalizza_generazione(stato: &mut StatoApp, esame: &str, risultato: Result<(), String>) {
+    match risultato {
+        Ok(()) => {
+            stato.anteprima_notebooklm = None;
+            segnala_successo_materiali(stato, &format!(
+                "Scheda pronta: {}",
+                archivi::nome_file_notebooklm(esame)
+            ));
+        }
+        Err(e) => segnala_errore_materiali(stato, &e),
+    }
+}
+
+pub(crate) fn segnala_errore_materiali(stato: &mut StatoApp, messaggio: &str) {
+    stato.anteprima_notebooklm = None;
+    stato.conferma = None;
+    stato.avviso = Some(messaggio.to_string());
+}
+
+pub(crate) fn segnala_successo_materiali(stato: &mut StatoApp, messaggio: &str) {
+    stato.avviso = None;
+    stato.aggiungi_notifica(messaggio);
+}
+
+#[cfg(test)]
+mod test_aggiornamento_notebooklm {
+    use super::*;
+    use crate::zotero::Evidenziazione;
+
+    #[test]
+    fn il_refresh_fallito_non_riusa_annotazioni_stale() {
+        let mut stato = StatoApp::nuovo();
+        stato.esame_scelto = Some(17);
+        stato.anteprima_notebooklm = Some(("obsolete.md".into(), "old material".into()));
+        stato.snapshot_zotero = Some(std::path::PathBuf::from("old_snapshot.sqlite"));
+        stato.collezioni = vec![crate::zotero::Collezione {
+            id: 17,
+            nome: "Esame obsoleto".into(),
+            documenti: 1,
+            sottocollezioni: 0,
+        }];
+        stato.documenti_esame = vec![crate::zotero::Documento {
+            chiave: "OLD".into(),
+            chiave_pdf: None,
+            titolo: "Documento obsoleto".into(),
+            tipo: "book".into(),
+            data_aggiunta: String::new(),
+        }];
+        stato.testi_scelti = vec!["Documento obsoleto".into()];
+        stato.config.cartella_zotero = std::env::temp_dir()
+            .join(format!("zotero-missing-{}", std::process::id()))
+            .to_string_lossy()
+            .into_owned();
+        stato.evidenziazioni = vec![Evidenziazione {
+            testo: "Annotazione obsoleta".into(),
+            commento: String::new(),
+            data: "2026-01-01".into(),
+        }];
+
+        let risultato = aggiorna_materiali_notebooklm(&mut stato);
+
+        assert!(risultato.is_err());
+        assert!(stato.evidenziazioni.is_empty());
+        assert!(stato.snapshot_zotero.is_none());
+        assert!(stato.collezioni.is_empty());
+        assert!(stato.documenti_esame.is_empty());
+        assert!(stato.testi_scelti.is_empty());
+        assert!(stato.anteprima_notebooklm.is_none());
     }
 
-    let riassunti = archivi::leggi_riassunti();
-    match archivi::genera_pacchetto_notebooklm(&esame, &stato.evidenziazioni, &riassunti) {
-        Ok(()) => stato.aggiungi_notifica(&format!(
-            "Scheda pronta: {}",
-            archivi::nome_file_notebooklm(&esame)
-        )),
-        Err(e) => stato.avviso = Some(e),
+    #[test]
+    fn il_refresh_fallito_interrompe_la_generazione_senza_notifica_di_successo() {
+        let mut stato = StatoApp::nuovo();
+        stato.conferma = Some(("Scheda pronta precedente".into(), std::time::Instant::now()));
+        genera_dopo_aggiornamento(&mut stato, Err("Zotero non disponibile".into()));
+
+        assert!(stato.conferma.is_none());
+        assert!(stato
+            .avviso
+            .as_deref()
+            .is_some_and(|avviso| avviso.contains("Zotero non disponibile")));
+    }
+
+    #[test]
+    fn una_notifica_di_successo_pulisce_l_avviso_precedente() {
+        let mut stato = StatoApp::nuovo();
+        stato.avviso = Some("Errore precedente".into());
+
+        segnala_successo_materiali(&mut stato, "Testi ricaricati da Zotero.");
+
+        assert!(stato.avviso.is_none());
+        assert!(stato
+            .conferma
+            .as_ref()
+            .is_some_and(|(testo, _)| testo == "Testi ricaricati da Zotero."));
+    }
+
+    #[test]
+    fn la_generazione_riuscita_chiude_l_anteprima_obsoleta() {
+        let mut stato = StatoApp::nuovo();
+        stato.anteprima_notebooklm = Some(("vecchia.md".into(), "vecchio contenuto".into()));
+        stato.avviso = Some("Errore precedente".into());
+
+        finalizza_generazione(&mut stato, "Storia romana", Ok(()));
+
+        assert!(stato.anteprima_notebooklm.is_none());
+        assert!(stato.avviso.is_none());
+        assert!(stato
+            .conferma
+            .as_ref()
+            .is_some_and(|(testo, _)| testo.contains("Scheda pronta")));
+    }
+
+    #[test]
+    fn errore_di_scrittura_chiude_anteprima_e_toast_di_successo() {
+        let mut stato = StatoApp::nuovo();
+        stato.anteprima_notebooklm = Some(("vecchia.md".into(), "vecchio testo".into()));
+        stato.conferma = Some(("Scheda pronta precedente".into(), std::time::Instant::now()));
+
+        finalizza_generazione(&mut stato, "Storia romana", Err("disco pieno".into()));
+
+        assert!(stato.anteprima_notebooklm.is_none());
+        assert!(stato.conferma.is_none());
+        assert!(stato.avviso.as_deref().is_some_and(|a| a.contains("disco pieno")));
+    }
+
+    #[test]
+    fn errore_di_lettura_chiude_anteprima_e_toast_di_successo() {
+        let mut stato = StatoApp::nuovo();
+        stato.anteprima_notebooklm = Some(("vecchia.md".into(), "vecchio testo".into()));
+        stato.conferma = Some(("Scheda pronta precedente".into(), std::time::Instant::now()));
+
+        segnala_errore_materiali(&mut stato, "file non leggibile");
+
+        assert!(stato.anteprima_notebooklm.is_none());
+        assert!(stato.conferma.is_none());
+        assert!(stato.avviso.as_deref().is_some_and(|a| a.contains("file non leggibile")));
     }
 }

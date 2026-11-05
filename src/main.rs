@@ -5,6 +5,7 @@
 
 mod ai;
 mod anti_sleep;
+mod appelli;
 mod archivi;
 mod audio;
 mod audio_voce;
@@ -29,6 +30,7 @@ mod tempo;
 mod tts;
 mod ui;
 mod ui_ai;
+mod ui_appelli;
 mod ui_archivi;
 mod ui_audio;
 mod ui_azioni;

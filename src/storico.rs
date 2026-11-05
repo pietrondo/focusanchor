@@ -146,13 +146,26 @@ fn entro_giorni(data: &str, oggi: chrono::NaiveDate, giorni: i64) -> bool {
     (0..=giorni).contains(&distanza)
 }
 
-/// Giorni che mancano a una data d'esame (`AAAA-MM-GG`).
+/// Formati di data accettati per l'appello.
 ///
-/// Restituisce `None` se la data non e' leggibile. Un valore negativo
-/// significa che l'esame e' gia' passato.
+/// Il portale dell'ateneo scrive le date come `GG/MM/AAAA`: accettare anche
+/// quel formato evita di dover convertire la data a mano ogni volta.
+pub const FORMATI_DATA: [&str; 2] = ["%Y-%m-%d", "%d/%m/%Y"];
+
+/// Legge una data d'appello in uno dei formati accettati.
+pub fn parse_data(scadenza: &str) -> Option<chrono::NaiveDate> {
+    let testo = scadenza.trim();
+    FORMATI_DATA
+        .iter()
+        .find_map(|formato| chrono::NaiveDate::parse_from_str(testo, formato).ok())
+}
+
+/// Giorni che mancano a una data d'esame.
+///
+/// Accetta `AAAA-MM-GG` e `GG/MM/AAAA`. Restituisce `None` se la data non
+/// e' leggibile. Un valore negativo significa che l'esame e' gia' passato.
 pub fn giorni_alla_data(scadenza: &str) -> Option<i64> {
-    let giorno =
-        chrono::NaiveDate::parse_from_str(scadenza.trim(), "%Y-%m-%d").ok()?;
+    let giorno = parse_data(scadenza)?;
     Some((giorno - Local::now().date_naive()).num_days())
 }
 

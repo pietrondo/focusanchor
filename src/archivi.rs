@@ -170,9 +170,17 @@ pub fn leggi_anki(esame: &str) -> String {
     fs::read_to_string(percorso_anki(esame)).unwrap_or_default()
 }
 
-/// Legge il contenuto del file dei riassunti.
-pub fn leggi_riassunti() -> String {
-    fs::read_to_string(percorso_riassunti()).unwrap_or_default()
+/// Legge il file dei riassunti; se non e' ancora stato creato, restituisce testo vuoto.
+pub fn leggi_riassunti() -> Result<String, String> {
+    leggi_file_opzionale(&percorso_riassunti())
+}
+
+fn leggi_file_opzionale(percorso: &Path) -> Result<String, String> {
+    match fs::read_to_string(percorso) {
+        Ok(testo) => Ok(testo),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(format!("Non riesco a leggere {}: {e}", percorso.display())),
+    }
 }
 
 /// Genera il pacchetto pronto per NotebookLM.
@@ -238,9 +246,10 @@ pub fn genera_pacchetto_notebooklm(
         .map_err(|e| format!("Non riesco a scrivere il pacchetto: {e}"))
 }
 
-/// Legge il pacchetto NotebookLM gia' generato per un esame.
-pub fn leggi_notebooklm_esame(esame: &str) -> String {
-    fs::read_to_string(percorso_notebooklm_esame(esame)).unwrap_or_default()
+/// Legge il pacchetto NotebookLM preservando gli errori del file system.
+pub fn leggi_notebooklm_esame_result(esame: &str) -> Result<String, String> {
+    fs::read_to_string(percorso_notebooklm_esame(esame))
+        .map_err(|e| format!("Non riesco a leggere la scheda NotebookLM: {e}"))
 }
 
 #[cfg(test)]
@@ -274,6 +283,32 @@ mod test {
     }
 
     #[test]
+    fn la_lettura_del_pacchetto_preserva_gli_errori_io() {
+        let esame = format!(
+            "File inesistente {} {}",
+            std::process::id(),
+            Local::now().timestamp_nanos_opt().unwrap_or_default()
+        );
+        assert!(leggi_notebooklm_esame_result(&esame).is_err());
+    }
+
+    #[test]
+    fn la_lettura_dei_riassunti_propaga_gli_errori_non_dovuti_a_file_inesistente() {
+        let percorso = std::env::temp_dir().join(format!(
+            "focusanchor-summary-dir-{}-{}",
+            std::process::id(),
+            Local::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        assert!(!percorso.exists());
+        fs::create_dir(&percorso).unwrap();
+
+        let risultato = leggi_file_opzionale(&percorso);
+
+        let _ = fs::remove_dir(&percorso);
+        assert!(risultato.is_err());
+    }
+
+    #[test]
     fn il_pacchetto_notebooklm_contiene_il_materiale() {
         let ev = vec![Evidenziazione {
             testo: "passaggio importante".to_string(),
@@ -288,7 +323,7 @@ mod test {
         // Il file viene scritto accanto all'eseguibile: la scrittura deve
         // riuscire e il contenuto deve contenere tutto il materiale.
         if esito.is_ok() {
-            let contenuto = leggi_notebooklm_esame("Storia Romana");
+            let contenuto = leggi_notebooklm_esame_result("Storia Romana").expect("file scritto");
             assert!(contenuto.contains("passaggio importante"));
             assert!(contenuto.contains("nota personale"));
             assert!(contenuto.contains("Ho capito la parte sulla repubblica"));

@@ -17,14 +17,23 @@ pub fn sezione_audio(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut Motore
                 .color(crate::ui::ARANCIO),
         );
     });
-    ui.horizontal(|ui| {
-        if ui.button("◀ Precedente").clicked() {
-            let nuova = modalita.precedente();
-            cambia_modalita(stato, audio, nuova);
-        }
-        if ui.button("Successiva ▶").clicked() {
-            let nuova = modalita.successiva();
-            cambia_modalita(stato, audio, nuova);
+    ui.horizontal_wrapped(|ui| {
+        for scelta in [
+            ModalitaAudio::Spenta,
+            ModalitaAudio::RumoreMarrone,
+            ModalitaAudio::Pioggia,
+            ModalitaAudio::PioggiaFile,
+            ModalitaAudio::PioggiaCitta,
+            ModalitaAudio::PioggiaDelicata,
+            ModalitaAudio::Binaurale4,
+            ModalitaAudio::Binaurale40,
+        ] {
+            if ui
+                .selectable_label(modalita == scelta, scelta.etichetta())
+                .clicked()
+            {
+                cambia_modalita(stato, audio, scelta);
+            }
         }
     });
     ui.label(
@@ -35,11 +44,12 @@ pub fn sezione_audio(ui: &mut egui::Ui, stato: &mut StatoApp, audio: &mut Motore
             }
             ModalitaAudio::Pioggia => "Pioggia: copre come il rumore, ma suona come pioggia.",
             ModalitaAudio::PioggiaFile => {
-                "Pioggia naturale: legge pioggia.m4a accanto all'eseguibile. Sostituisci il file per cambiarla."
+                "Pioggia naturale: legge pioggia.mp3 dalla cartella dati dell'app. Sostituisci il file per cambiarla."
             }
-            ModalitaAudio::Binaurale40 => {
-                "Binaurale 40Hz: usa le cuffie, tiene su la vigilanza."
-            }
+            ModalitaAudio::PioggiaCitta => "Registrazione CC0: pioggia urbana, circa 2 minuti e 30 secondi; ripetuta in ciclo.",
+            ModalitaAudio::PioggiaDelicata => "Registrazione CC0: pioggia delicata, circa 5 minuti; qualità preview ridotta, ripetuta in ciclo.",
+            ModalitaAudio::Binaurale40 => "Toni binaurali con differenza di 40 Hz. Nessun beneficio attentivo è garantito.",
+            ModalitaAudio::Binaurale4 => "Toni binaurali con differenza di 4 Hz. Nessun beneficio attentivo è garantito.",
         })
         .size(12.0)
         .color(TENUE),

@@ -114,6 +114,327 @@ mod test {
         }
         stato.termina_sessione();
     }
+
+    #[test]
+    fn la_sessione_completata_produce_e_mostra_il_riepilogo_reale() {
+        let ctx = egui::Context::default();
+        let (mittente, _canale) = std::sync::mpsc::channel();
+        let mut stato = StatoApp::nuovo();
+        stato.config.obiettivo = "Ripasso appello reale".to_string();
+        stato.avvia_sessione(&mittente);
+        stato.task.avvia(1);
+        stato.task.completa();
+        stato.tempo_documenti.insert("Capitolo 1".to_string(), 40);
+        stato.sessione.as_mut().unwrap().inizio -= std::time::Duration::from_secs(75);
+        stato.termina_sessione();
+
+        let riepilogo = stato.ultimo_riepilogo.as_ref().expect("sessione terminata");
+        assert_eq!(riepilogo.minuti, 1);
+        assert_eq!(riepilogo.blocchi, 1);
+
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(620.0, 860.0),
+            )),
+            ..Default::default()
+        };
+        let output = ctx.run(raw, |ctx| {
+            crate::ui_setup::disegna(
+                ctx,
+                &mut stato,
+                &mut crate::audio::MotoreAudio::nuovo(),
+                &mittente,
+            );
+        });
+        let testi: Vec<&str> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(testi.contains(&"SESSIONE COMPLETATA"), "{testi:?}");
+        assert!(
+            testi.iter().any(|testo| testo.contains("1 min")),
+            "{testi:?}"
+        );
+        assert!(
+            testi.iter().any(|testo| testo.contains("1 blocchi")),
+            "{testi:?}"
+        );
+        assert!(
+            testi
+                .iter()
+                .any(|testo| testo.contains("Capitolo 1: 00:40")),
+            "{testi:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod test_appelli {
+    use crate::state::StatoApp;
+    use crate::ui::{ACCENTO, ARANCIO, GIALLO, TENUE};
+    use eframe::egui;
+
+    /// Il riquadro degli appelli deve mostrare ogni esame con la sua data e
+    /// il conto alla rovescia: e' la risposta a "quando ho esami".
+    #[test]
+    fn il_riquadro_appelli_mostra_le_date_e_il_conto_alla_rovescia() {
+        let ctx = egui::Context::default();
+        let mut stato = StatoApp::nuovo();
+        stato.config.esami.clear();
+        // Due appelli a distanza di giorni diversi: il piu' vicino viene
+        // prima e i due non devono confondersi.
+        let oggi = chrono::Local::now().date_naive();
+        stato.config.esami.insert(
+            "Letteratura italiana".into(),
+            crate::config::InfoEsame {
+                data_esame: (oggi + chrono::Duration::days(41)).format("%Y-%m-%d").to_string(),
+                ..Default::default()
+            },
+        );
+        stato.config.esami.insert(
+            "storia romana".into(),
+            crate::config::InfoEsame {
+                data_esame: (oggi + chrono::Duration::days(34)).format("%Y-%m-%d").to_string(),
+                ..Default::default()
+            },
+        );
+
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(620.0, 860.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    crate::ui_appelli::sezione_appelli(ui, &mut stato);
+                });
+            },
+        );
+        let testi: Vec<&str> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(testi.iter().any(|t| t.contains("Letteratura italiana")), "{testi:?}");
+        assert!(testi.iter().any(|t| t.contains("storia romana")), "{testi:?}");
+        // I due countdown devono essere distinti: e' il punto della vista.
+        assert!(testi.iter().any(|t| t.contains("fra 41 giorni")), "{testi:?}");
+        assert!(testi.iter().any(|t| t.contains("fra 34 giorni")), "{testi:?}");
+    }
+
+    /// La data va letta anche nel formato del portale (`GG/MM/AAAA`):
+    /// e' il formato in cui l'utente la vede.
+    #[test]
+    fn la_data_in_formato_italiano_produce_il_countdown() {
+        let mut stato = StatoApp::nuovo();
+        stato.config.esami.clear();
+        let oggi = chrono::Local::now().date_naive();
+        stato.config.esami.insert(
+            "storia romana".into(),
+            crate::config::InfoEsame {
+                data_esame: (oggi + chrono::Duration::days(10)).format("%d/%m/%Y").to_string(),
+                ..Default::default()
+            },
+        );
+
+        let appelli = crate::appelli::elenco(&stato.config, &stato.storico);
+
+        assert_eq!(appelli[0].giorni, Some(10));
+    }
+
+    /// Il riquadro degli appelli deve reggere le finestre strette: i campi
+    /// data e i badge non devono sfondare il bordo destro.
+    #[test]
+    fn il_riquadro_appelli_non_sfonda_a_finestra_stretta() {
+        let ctx = egui::Context::default();
+        let (mittente, _canale) = std::sync::mpsc::channel();
+        let mut stato = StatoApp::nuovo();
+        let mut audio = crate::audio::MotoreAudio::nuovo();
+        stato.config.esami.clear();
+        stato.config.esami.insert(
+            "Letteratura italiana".into(),
+            crate::config::InfoEsame {
+                data_esame: "16/12/2026".into(),
+                crediti: 9,
+                ..Default::default()
+            },
+        );
+
+        for (w, h) in [(360.0, 640.0), (420.0, 380.0), (620.0, 860.0)] {
+            let mut inp = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(w, h),
+                )),
+                ..Default::default()
+            };
+            inp.events.push(egui::Event::PointerButton {
+                pos: egui::pos2(w / 2.0, h / 2.0),
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            });
+            let _ = ctx.run(inp, |ctx| {
+                crate::ui_setup::disegna(ctx, &mut stato, &mut audio, &mittente);
+            });
+
+            let usato = ctx.used_rect();
+            let schermo = ctx.screen_rect();
+            if usato.right().is_finite() {
+                assert!(
+                    usato.right() <= schermo.right() + 1.0,
+                    "contenuto oltre il bordo destro a {w}x{h}: usato={:.1} schermo={:.1}",
+                    usato.right(),
+                    schermo.right()
+                );
+            }
+        }
+    }
+
+    /// Durante la sessione il conto alla rovescia deve riguardare l'esame
+    /// che si sta studiando, non il piu' vicino in assoluto.
+    #[test]
+    fn l_overlay_mostra_il_conto_dell_esame_che_stai_studiando() {
+        let ctx = egui::Context::default();
+        let (mittente, _canale) = std::sync::mpsc::channel();
+        let mut stato = StatoApp::nuovo();
+        let mut audio = crate::audio::MotoreAudio::nuovo();
+        stato.config.esami.clear();
+        let oggi = chrono::Local::now().date_naive();
+        // "Vicino" scade prima, ma si studia "Quello che studio".
+        stato.config.esami.insert(
+            "Vicino".into(),
+            crate::config::InfoEsame {
+                data_esame: (oggi + chrono::Duration::days(5)).format("%Y-%m-%d").to_string(),
+                ..Default::default()
+            },
+        );
+        stato.config.esami.insert(
+            "Quello che studio".into(),
+            crate::config::InfoEsame {
+                data_esame: (oggi + chrono::Duration::days(40)).format("%Y-%m-%d").to_string(),
+                ..Default::default()
+            },
+        );
+        stato.collezioni = vec![crate::zotero::Collezione {
+            id: 1,
+            nome: "Quello che studio".into(),
+            documenti: 4,
+            sottocollezioni: 0,
+        }];
+        stato.esame_scelto = Some(1);
+        stato.config.obiettivo = "Capitolo 3".to_string();
+        stato.avvia_sessione(&mittente);
+
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(420.0, 380.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| {
+                crate::ui_focus::disegna(ctx, &mut stato, &mut audio);
+            },
+        );
+        let testi: Vec<&str> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            testi
+                .iter()
+                .any(|t| t.contains("Quello che studio") && t.contains("fra 40 giorni")),
+            "{testi:?}"
+        );
+        stato.termina_sessione();
+    }
+
+    /// Il nome dell'esame nel riquadro appelli deve essere selezionabile:
+    /// e' il ponte fra "quando ho esami" e "cosa studio adesso".
+    #[test]
+    fn il_riquadro_appelli_permette_di_scegliere_lesame() {
+        let ctx = egui::Context::default();
+        let mut stato = StatoApp::nuovo();
+        stato.config.esami.clear();
+        stato.collezioni = vec![
+            crate::zotero::Collezione {
+                id: 1,
+                nome: "Storia romana".into(),
+                documenti: 3,
+                sottocollezioni: 0,
+            },
+            crate::zotero::Collezione {
+                id: 2,
+                nome: "Letteratura italiana".into(),
+                documenti: 5,
+                sottocollezioni: 0,
+            },
+        ];
+        stato.esame_scelto = Some(1);
+        stato.config.esami.insert(
+            "Letteratura italiana".into(),
+            crate::config::InfoEsame {
+                data_esame: "16/12/2026".into(),
+                ..Default::default()
+            },
+        );
+        // Serve lo snapshot: cambiare esame carica i testi da Zotero.
+        stato.snapshot_zotero = Some(std::path::PathBuf::from("snapshot-prova.sqlite"));
+
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(620.0, 860.0),
+            )),
+            ..Default::default()
+        };
+        let output = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                crate::ui_appelli::sezione_appelli(ui, &mut stato);
+            });
+        });
+
+        // Il nome deve comparire come etichetta selezionabile.
+        let testo = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.as_str()),
+                _ => None,
+            })
+            .find(|t| t.contains("Letteratura"))
+            .expect("nome dell'esame visibile");
+        assert!(testo.contains("Letteratura italiana"), "{testo:?}");
+    }
+
+    /// L'import non deve rompere la palette: i colori devono restare quelli
+    /// del tema, non uno qualsiasi.
+    #[test]
+    fn i_colori_del_riquadro_venono_dal_tema() {
+        assert_eq!(ACCENTO, crate::ui::ACCENTO);
+        assert_eq!(ARANCIO, crate::ui::ARANCIO);
+        assert_eq!(GIALLO, crate::ui::GIALLO);
+        assert_eq!(TENUE, crate::ui::TENUE);
+    }
 }
 
 #[cfg(test)]
@@ -152,5 +473,175 @@ mod test_link {
             });
         }
         assert_eq!(stato.campo_notebook, link);
+    }
+}
+
+#[cfg(test)]
+mod test_materiali {
+    use crate::state::StatoApp;
+    use crate::zotero::Collezione;
+    use eframe::egui;
+
+    #[test]
+    fn il_flusso_materiali_unisce_azioni_zotero_e_notebooklm() {
+        let ctx = egui::Context::default();
+        let mut stato = StatoApp::nuovo();
+        stato.collezioni = vec![Collezione {
+            id: 1,
+            nome: "Storia romana".to_string(),
+            documenti: 3,
+            sottocollezioni: 0,
+        }];
+        stato.esame_scelto = Some(1);
+
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(620.0, 860.0),
+            )),
+            ..Default::default()
+        };
+        let output = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                crate::ui_zotero::sezione_esame(ui, &mut stato);
+            });
+        });
+        let testi: Vec<&str> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            testi.iter().any(|testo| testo.contains("MATERIALI")),
+            "{testi:?}"
+        );
+        assert!(
+            testi
+                .iter()
+                .any(|testo| testo.contains("Ricarica da Zotero")),
+            "{testi:?}"
+        );
+        assert!(
+            testi.iter().any(|testo| testo.contains("NotebookLM")),
+            "{testi:?}"
+        );
+        assert!(
+            testi.iter().any(|testo| testo.contains("aggiorna scheda")),
+            "{testi:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod test_anteprima_notebooklm {
+    use crate::state::StatoApp;
+    use crate::zotero::Collezione;
+    use eframe::egui;
+
+    #[test]
+    fn anteprima_rimane_visibile_nei_frame_successivi_finche_non_si_chiude() {
+        let ctx = egui::Context::default();
+        let mut stato = StatoApp::nuovo();
+        stato.collezioni = vec![Collezione {
+            id: 1,
+            nome: "Storia romana".to_string(),
+            documenti: 3,
+            sottocollezioni: 0,
+        }];
+        stato.esame_scelto = Some(1);
+        stato.anteprima_notebooklm = Some((
+            "notebooklm_Storia_romana.md".to_string(),
+            "Riepilogo persistente di prova".to_string(),
+        ));
+
+        let frame_testi = |stato: &mut StatoApp| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(620.0, 860.0),
+                )),
+                ..Default::default()
+            };
+            let output = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    crate::ui_zotero::sezione_esame(ui, stato);
+                });
+            });
+            output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let _ = frame_testi(&mut stato);
+        let secondo_frame = frame_testi(&mut stato);
+        assert!(secondo_frame
+            .iter()
+            .any(|testo| testo.contains("Riepilogo persistente")));
+        assert!(secondo_frame
+            .iter()
+            .any(|testo| testo.contains("Chiudi anteprima")));
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(620.0, 860.0),
+            )),
+            ..Default::default()
+        };
+        let output = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                crate::ui_zotero::sezione_esame(ui, &mut stato);
+            });
+        });
+        let chiudi = output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::epaint::Shape::Text(testo)
+                if testo.galley.job.text == "Chiudi anteprima" =>
+            {
+                Some(testo.pos + testo.galley.size() / 2.0)
+            }
+            _ => None,
+        }).expect("pulsante di chiusura visibile");
+        let mut click = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(620.0, 860.0),
+            )),
+            ..Default::default()
+        };
+        click.events.extend([
+            egui::Event::PointerMoved(chiudi),
+            egui::Event::PointerButton {
+                pos: chiudi,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerButton {
+                pos: chiudi,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]);
+        let _ = ctx.run(click, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                crate::ui_zotero::sezione_esame(ui, &mut stato);
+            });
+        });
+        assert!(stato.anteprima_notebooklm.is_none());
+        stato.anteprima_notebooklm = Some((
+            "notebooklm_Storia_romana.md".to_string(),
+            "Riepilogo persistente di prova".to_string(),
+        ));
+        crate::ui_esami::cambia_esame(&mut stato, None);
+        assert!(stato.anteprima_notebooklm.is_none());
     }
 }

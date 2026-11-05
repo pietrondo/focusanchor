@@ -26,6 +26,16 @@ pub fn disegna(ctx: &egui::Context, stato: &mut StatoApp, audio: &mut MotoreAudi
             ui.add_space(2.0);
             countdown(ui, stato);
             pannello_pausa(ui, stato);
+            if ui
+                .add_sized(
+                    [crate::ui::larghezza(ui), 32.0],
+                    egui::Button::new("⚡ S.O.S. Sonnolenza — reset di 60 secondi"),
+                )
+                .clicked()
+            {
+                let missione = stato.anti_sonno.avvia_missione();
+                audio.parla(&format!("Missione di un minuto. {missione}"));
+            }
             ui.add_space(6.0);
 
             // La larghezza si ricava dalla finestra vera: `available_width`
@@ -41,20 +51,17 @@ pub fn disegna(ctx: &egui::Context, stato: &mut StatoApp, audio: &mut MotoreAudi
                         ui.separator();
                     }
 
-                    crate::ui_azioni::disegna(ui, stato, audio, larghezza);
-                    ui.add_space(4.0);
-
-                    crate::ui_ai::mostra_risposta(ui, stato);
-
-                    crate::ui_ripasso::ripasso_rapido(ui, stato, larghezza);
-
                     pannello_task(ui, stato, audio);
-                    ui.add_space(4.0);
-
-                    parcheggio_pensieri(ui, stato);
-                    ui.add_space(6.0);
-
                     crate::ui_sblocco::disegna(ui, stato, audio, ctx);
+
+                    egui::CollapsingHeader::new("Strumenti durante lo studio")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            crate::ui_azioni::disegna(ui, stato, audio, larghezza);
+                            crate::ui_ai::mostra_risposta(ui, stato);
+                            crate::ui_ripasso::ripasso_rapido(ui, stato, larghezza);
+                            parcheggio_pensieri(ui, stato);
+                        });
 
                     notifica(ui, stato.notifica_attiva());
                     avviso(ui, &stato.avviso);
@@ -77,11 +84,42 @@ fn intestazione(ui: &mut egui::Ui, stato: &StatoApp) {
             badge(ui, &format!("⛔ {}", stato.xp.distrazioni), GIALLO);
         }
     });
-    // Quanto manca all'appello piu' vicino: cambia il peso di ogni sessione.
-    if let Some((giorni, esami)) = crate::ui_storico::prossimo_esame(stato) {
-        let testo = crate::ui_storico::testo_conto(giorni, &esami);
+    // Quanto manca all'appello che conta: quello dell'esame che stai
+    // studiando. Se non ha una data, si cade sul piu' vicino.
+    let esame = stato.nome_esame();
+    if let Some((giorni, esami)) = crate::appelli::conto_di(&stato.config, &esame) {
+        let testo = crate::appelli::testo_conto(giorni, &esami);
         ui.label(egui::RichText::new(testo).size(13.0).color(ARANCIO));
+        piano_di_studio(ui, stato, &esame, giorni);
     }
+}
+
+/// Il piano di studio dell'esame corrente: quanto hai fatto e quanto resta.
+///
+/// E' la versione che serve durante lo studio: dice se il ritmo di oggi e'
+/// sufficiente o se stai andando indietro.
+fn piano_di_studio(ui: &mut egui::Ui, stato: &StatoApp, esame: &str, giorni: i64) {
+    if esame.is_empty() || esame == "Senza esame" {
+        return;
+    }
+    let secondi = crate::appelli::secondi_per_documento(&stato.storico);
+    let piano = crate::appelli::piano(esame, &secondi, &stato.collezioni, Some(giorni));
+    let ritmo = crate::appelli::ritmo_esame(&stato.storico, esame);
+    let Some(target) = piano.minuti_al_giorno else {
+        return;
+    };
+    let (testo, colore) = if ritmo >= target {
+        (
+            format!("Ritmo ok: {ritmo} min/giorno (ne servono {target})."),
+            VERDE,
+        )
+    } else {
+        (
+            format!("Ritmo basso: {ritmo} min/giorno, ne servono {target}."),
+            GIALLO,
+        )
+    };
+    ui.label(egui::RichText::new(testo).size(12.0).color(colore));
 }
 
 /// Countdown in grande e barra di avanzamento.

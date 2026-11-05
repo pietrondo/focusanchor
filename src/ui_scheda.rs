@@ -3,7 +3,7 @@
 use eframe::egui;
 
 use crate::state::StatoApp;
-use crate::ui::{ARANCIO, GIALLO, TENUE};
+use crate::ui::TENUE;
 
 /// Scheda dell'esame: link al corso, crediti, modalita' e data d'appello.
 ///
@@ -53,15 +53,20 @@ pub fn sezione_scheda_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
 
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Appello").size(12.0).color(TENUE));
-                egui::TextEdit::singleline(&mut info.data_esame)
-                    .hint_text("AAAA-MM-GG")
-                    .desired_width(110.0)
-                    .show(ui);
-                if let Some(giorni) = crate::storico::giorni_alla_data(&info.data_esame) {
+                crate::ui_appelli::campo_data(ui, stato, &esame);
+                // Il conto alla rovescia accanto al campo: qui si guarda un
+                // esame alla volta, e serve sapere quanto manca.
+                let data = stato
+                    .config
+                    .esami
+                    .get(&esame)
+                    .map(|info| info.data_esame.clone())
+                    .unwrap_or_default();
+                if let Some(giorni) = crate::storico::giorni_alla_data(&data) {
                     let (testo, colore) = match giorni {
-                        g if g < 0 => ("passato".to_string(), TENUE),
-                        0 => ("oggi".to_string(), GIALLO),
-                        g => (format!("mancano {g} giorni"), ARANCIO),
+                        g if g < 0 => ("passato".to_string(), crate::ui::TENUE),
+                        0 => ("oggi".to_string(), crate::ui::GIALLO),
+                        g => (format!("mancano {g} giorni"), crate::ui::ARANCIO),
                     };
                     ui.label(egui::RichText::new(testo).size(12.0).color(colore));
                 }
@@ -91,7 +96,14 @@ fn applica_azioni(
     if salva {
         let mut da_salvare = info.clone();
         da_salvare.url = da_salvare.url.trim().to_string();
-        da_salvare.data_esame = da_salvare.data_esame.trim().to_string();
+        // La data la scrive `ui_appelli::campo_data` appena si digita: qui si
+        // riprende quella, non la copia di inizio frame che sarebbe vecchia.
+        da_salvare.data_esame = stato
+            .config
+            .esami
+            .get(&esame)
+            .map(|salvata| salvata.data_esame.clone())
+            .unwrap_or_default();
         stato.config.esami.insert(esame, da_salvare);
         stato.salva_configurazione();
         stato.aggiungi_notifica("Scheda dell'esame salvata.");

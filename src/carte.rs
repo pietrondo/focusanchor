@@ -29,6 +29,13 @@ pub enum Giudizio {
     Bene,
 }
 
+/// Quante carte si possono ripassare in un giorno.
+///
+/// Il tetto serve per l'ADHD: davanti a un backlog di 40 carte si
+/// rinuncia, mentre 15 carte fatte bene ogni giorno sono gia' un lavoro
+/// serio. Le carte oltre il tetto non si perdono: restano scadute.
+pub const TETTO_GIORNALIERO: usize = 15;
+
 /// Una carta: la domanda che ti e' stata fatta e la risposta che hai scritto.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Carta {
@@ -100,14 +107,25 @@ impl MemoriaEsame {
             .any(|carta| carta.domanda.trim() == domanda.trim())
     }
 
-    /// Prossima carta da ripassare con indice successivo a `dopo`.
+    /// Prossima carta del giro di oggi, entro il tetto giornaliero.
     ///
-    /// Serve al pannello per avanzare senza ripescare la carta appena
-    /// giudicata: se l'hai sbagliata resta scaduta oggi, ma non deve
-    /// riapparire subito nella stessa passata.
-    pub fn prossima_scaduta(&self, oggi: &str, dopo: Option<usize>) -> Option<usize> {
+    /// Il tetto limita quante carte si affrontano in un giorno: un backlog
+    /// grande diventa un muro e il ripasso viene abbandonato. Le carte
+    /// oltre il tetto restano scadute e tornano domani.
+    pub fn prossima_del_giro(&self, oggi: &str, dopo: Option<usize>) -> Option<usize> {
         let inizio = dopo.map(|indice| indice + 1).unwrap_or(0);
-        self.scadute(oggi).into_iter().find(|indice| *indice >= inizio)
+        self.scadute_limite(oggi, TETTO_GIORNALIERO)
+            .into_iter()
+            .find(|indice| *indice >= inizio)
+    }
+
+    /// Carte da ripassare oggi, con un tetto.
+    ///
+    /// Il tetto esiste per l'ADHD: un backlog di 40 carte e' un muro che
+    /// fa abbandonare il ripasso. 15 carte al giorno e' gia' un lavoro
+    /// serio, e le altre aspettano senza perdersi.
+    pub fn scadute_limite(&self, oggi: &str, tetto: usize) -> Vec<usize> {
+        self.scadute(oggi).into_iter().take(tetto).collect()
     }
 }
 
@@ -263,6 +281,36 @@ mod test {
         assert!(memoria.contiene("La riforma di Tiberio Gracco"));
         assert!(memoria.contiene("  La riforma di Tiberio Gracco  "));
         assert!(!memoria.contiene("Un'altra cosa"));
+    }
+
+    #[test]
+    fn il_tetto_giornaliero_limita_il_giro_senza_perdere_carte() {
+        let mut memoria = MemoriaEsame::default();
+        // 30 carte scadute: un backlog che fa abbandonare il ripasso.
+        for i in 0..30 {
+            let mut carta = carta_nuova();
+            carta.domanda = format!("Domanda {i}");
+            carta.prossima = "2026-11-01".to_string();
+            memoria.carte.push(carta);
+        }
+        let oggi = "2026-11-15";
+
+        // Il tetto limita quante carte si affrontano oggi.
+        let giro = memoria.scadute_limite(oggi, TETTO_GIORNALIERO);
+        assert_eq!(giro.len(), TETTO_GIORNALIERO);
+
+        // Ma il giro finisce: dopo l'ultima carta del tetto non c'e' la
+        // prossima, e le carte restano scadute per domani.
+        let mut indice = memoria.prossima_del_giro(oggi, None);
+        let mut girate = 0;
+        while let Some(attuale) = indice {
+            girate += 1;
+            indice = memoria.prossima_del_giro(oggi, Some(attuale));
+        }
+        assert_eq!(girate, TETTO_GIORNALIERO);
+
+        // Nessuna carta e' andata persa: sono ancora tutte da ripassare.
+        assert_eq!(memoria.scadute(oggi).len(), 30);
     }
 
     #[test]
