@@ -1,211 +1,391 @@
-//! Selezione dell'esame e dei testi da alternare, presi da Zotero.
+//! Spazio di lavoro dell'esame: materiali Zotero e notebook NotebookLM
+//! nella stessa scheda, con un solo selettore d'esame.
+//!
+//! Prima erano due riquadri con due tendine diverse: si poteva avere
+//! "Storia romana" a sinistra e "Letteratura italiana" a destra, e nessuno
+//! se ne accorgeva. Qui l'esame e' uno solo e tutto il resto ne consegue.
 
 use eframe::egui;
 
 use crate::state::{StatoApp, MAX_TESTI};
-use crate::ui::{badge, TENUE, VERDE};
+use crate::ui::{badge, ARANCIO, TENUE, VERDE, VIOLA};
 
-/// Sezione "Esame e testi": due menu in sequenza.
+/// Elenco degli esami su cui lavorare.
+///
+/// Prima le schede salvate (gli esami veri); se non ce n'e' ancora nessuna
+/// si usano le collezioni Zotero, cosi' il primo avvio non e' un vicolo
+/// cieco.
+fn esami_disponibili(stato: &StatoApp) -> Vec<String> {
+    if !stato.config.esami.is_empty() {
+        return stato.config.esami.keys().cloned().collect();
+    }
+    stato.collezioni.iter().map(|c| c.nome.clone()).collect()
+}
+
+/// Esame corrente: quello scelto, altrimenti quello aperto da Zotero.
+fn esame_corrente(stato: &StatoApp, disponibili: &[String]) -> String {
+    if let Some(scelto) = stato
+        .esame_notebooklm
+        .clone()
+        .filter(|e| disponibili.iter().any(|x| x == e))
+    {
+        return scelto;
+    }
+    let da_zotero = stato.nome_esame();
+    if disponibili.iter().any(|e| e == &da_zotero) {
+        return da_zotero;
+    }
+    disponibili.first().cloned().unwrap_or_default()
+}
+
+/// Cambia esame in un colpo solo: nome, collezione Zotero e materiali.
+fn scegli_esame(stato: &mut StatoApp, nome: &str) {
+    stato.esame_notebooklm = Some(nome.to_string());
+    // L'esame scelto si ricorda: alla prossima apertura i materiali sono
+    // gia' caricati.
+    if stato.config.esame_corrente != nome {
+        stato.config.esame_corrente = nome.to_string();
+        stato.salva_configurazione();
+    }
+    let id = stato
+        .collezioni
+        .iter()
+        .find(|c| c.nome.eq_ignore_ascii_case(nome))
+        .map(|c| c.id);
+    if let Some(id) = id {
+        // Senza snapshot Zotero non c'e' niente da caricare: si evita di
+        // svuotare i materiali per un cambio che non porta dati.
+        if stato.esame_scelto != Some(id) && stato.snapshot_zotero.is_some() {
+            crate::ui_esami::cambia_esame(stato, Some(id));
+        } else {
+            stato.esame_scelto = Some(id);
+        }
+    }
+}
+
+/// Il tuo esame: tutto quello che serve su un esame, in una scheda sola.
 pub fn sezione_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
-    if stato.collezioni.is_empty() {
+    let disponibili = esami_disponibili(stato);
+    if disponibili.is_empty() {
         crate::ui_caricamento::stato_vuoto(ui, stato);
         return;
     }
 
-    ui.label(
-        egui::RichText::new("MATERIALI")
-            .size(11.0)
-            .strong()
-            .color(TENUE),
-    );
-    crate::ui_caricamento::pulsanti_caricamento(ui, stato);
-    ui.add_space(10.0);
-
-    // Primo menu: l'esame, cioe' la collezione Zotero.
-    ui.label(
-        egui::RichText::new("ESAME")
-            .size(11.0)
-            .strong()
-            .color(TENUE),
-    );
-    let esame_corrente = stato
-        .esame_scelto
-        .and_then(|id| stato.collezioni.iter().find(|c| c.id == id))
-        .map(|c| c.nome.clone())
-        .unwrap_or_else(|| "Scegli l'esame…".to_string());
-
-    let mut nuovo_esame = stato.esame_scelto;
+    // Un solo selettore per tutta la scheda.
+    let corrente = esame_corrente(stato, &disponibili);
+    stato.esame_notebooklm = Some(corrente.clone());
+    let mut scelto = Some(corrente.clone());
     egui::ComboBox::from_id_salt("scegli_esame")
         // Larghezza protetta: se fosse infinita il menu romperebbe il layout.
         .width(crate::ui::larghezza(ui) - 8.0)
-        .selected_text(egui::RichText::new(esame_corrente).size(15.0))
+        .selected_text(egui::RichText::new(crate::ui::accorcia(&corrente, 40)).size(15.0))
         .show_ui(ui, |ui| {
-            for collezione in &stato.collezioni {
-                let etichetta = if collezione.sottocollezioni > 0 {
-                    format!(
-                        "{}  ·  {} doc. ({} sottocollezioni)",
-                        collezione.nome, collezione.documenti, collezione.sottocollezioni
-                    )
-                } else {
-                    format!("{}  ·  {} doc.", collezione.nome, collezione.documenti)
+            for nome in &disponibili {
+                let collezione = stato.collezioni.iter().find(|c| c.nome.eq_ignore_ascii_case(nome));
+                let etichetta = match collezione {
+                    Some(c) if c.documenti > 0 => {
+                        format!("{}  ·  {} doc.", nome, c.documenti)
+                    }
+                    _ => nome.clone(),
                 };
-                ui.selectable_value(&mut nuovo_esame, Some(collezione.id), etichetta);
+                ui.selectable_value(&mut scelto, Some(nome.clone()), etichetta);
             }
         });
-    if nuovo_esame != stato.esame_scelto {
-        crate::ui_esami::cambia_esame(stato, nuovo_esame);
+    if let Some(nuovo) = scelto {
+        if nuovo != corrente {
+            scegli_esame(stato, &nuovo);
+        }
     }
 
-    ui.horizontal_wrapped(|ui| {
-        let collegato = stato.snapshot_zotero.is_some();
-        let colore = if collegato { VERDE } else { TENUE };
-        let stato_zotero = if collegato {
-            format!(
-                "Zotero · {} documenti · {} annotazioni",
-                stato.documenti_esame.len(),
-                stato.evidenziazioni.len()
-            )
-        } else {
-            "Zotero non caricato".to_string()
-        };
-        ui.label(egui::RichText::new(stato_zotero).size(12.0).color(colore));
-        if ui.small_button("🔄 Ricarica da Zotero").clicked() {
-            crate::ui_esami::ricarica_testi(stato);
-        }
-    });
+    ui.add_space(8.0);
+    materiali_zotero(ui, stato, &corrente);
 
-    ui.add_space(6.0);
-    sezione_notebook(ui, stato);
+    ui.add_space(8.0);
+    crate::ui_scheda::sezione_scheda_esame(ui, stato, &corrente);
 
-    ui.add_space(6.0);
-    crate::ui_scheda::sezione_scheda_esame(ui, stato);
+    ui.add_space(8.0);
+    testi_da_alternare(ui, stato);
 
-    ui.add_space(12.0);
-    sezione_testi(ui, stato);
+    ui.add_space(8.0);
+    ripasso(ui, stato);
 }
 
-/// Link del notebook NotebookLM dell'esame scelto.
+/// Nome dell'esame su cui sta lavorando la finestra.
 ///
-/// Ogni esame ha il suo notebook con i testi caricati: salvando il link una
-/// volta, "NotebookLM" apre direttamente quello invece della pagina iniziale.
-fn sezione_notebook(ui: &mut egui::Ui, stato: &mut StatoApp) {
-    let Some(esame) = stato
-        .esame_scelto
-        .and_then(|id| stato.collezioni.iter().find(|c| c.id == id))
-        .map(|c| c.nome.clone())
-    else {
+/// Lo legge anche la colonna di destra: le due colonne devono parlare
+/// dello stesso esame, altrimenti si torna al problema di prima.
+pub fn nome_esame_corrente(stato: &StatoApp) -> String {
+    esame_corrente(stato, &esami_disponibili(stato))
+}
+
+/// Colonna NotebookLM: link, fonti, domande e flashcard dello stesso esame.
+pub fn sezione_notebooklm(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    let esame = nome_esame_corrente(stato);
+    if esame.is_empty() {
+        ui.label(
+            egui::RichText::new("Scegli un esame per usare NotebookLM.")
+                .size(12.0)
+                .color(TENUE),
+        );
+        return;
+    }
+    link_notebook(ui, stato, &esame);
+    ui.add_space(6.0);
+    crate::ui_notebooklm::sezione_chiedi(ui, stato, &esame);
+}
+
+/// Riquadro dove vive la finestra di Zotero, se agganciata.
+///
+/// Lo spazio si prenota sempre: se non c'e' Zotero dentro ci sta il
+/// pulsante per agganciarlo, e il layout non salta quando compare.
+fn riquadro_zotero(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    let larghezza = crate::ui::larghezza(ui);
+    let altezza = 360.0;
+    let (rettangolo, _) =
+        ui.allocate_exact_size(egui::vec2(larghezza, altezza), egui::Sense::hover());
+    // La posizione serve al ciclo principale per muovere la finestra vera.
+    stato.area_zotero = Some(rettangolo);
+
+    if stato.zotero_incassato.is_some() {
+        // Lo spazio e' occupato dalla finestra vera: sotto resta solo il
+        // comando per liberarla, che deve stare fuori dal riquadro.
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                egui::RichText::new("Zotero è qui dentro.")
+                    .size(11.0)
+                    .color(TENUE),
+            );
+            if ui.small_button("⏏ Stacca Zotero").clicked() {
+                stacca_zotero(stato);
+            }
+        });
+        return;
+    }
+
+    // Non agganciato: il riquadro ospita il pulsante.
+    let mut dentro = ui.new_child(egui::UiBuilder::new()
+        .max_rect(rettangolo)
+        .layout(egui::Layout::top_down(egui::Align::Center)));
+    dentro.add_space(altezza / 2.0 - 40.0);
+    dentro.label(
+        egui::RichText::new("📚 Zotero")
+            .size(16.0)
+            .strong()
+            .color(TENUE),
+    );
+    dentro.label(
+        egui::RichText::new("Apri i PDF e sottolinea, senza cambiare finestra.")
+            .size(12.0)
+            .color(TENUE),
+    );
+    dentro.add_space(8.0);
+    if dentro
+        .add(egui::Button::new("📌 Aggancia Zotero qui").min_size(egui::vec2(220.0, 32.0)))
+        .clicked()
+    {
+        aggancia_zotero(stato);
+    }
+}
+
+/// Aggancia la finestra di Zotero dentro la nostra.
+fn aggancia_zotero(stato: &mut StatoApp) {
+    // Zotero puo' essere chiuso: si prova ad aprirlo e si aspetta che la
+    // finestra esista davvero, invece di fallire subito.
+    let mut finestra = crate::incasso::finestra_zotero();
+    if finestra.is_none() {
+        if let Err(e) = crate::incasso::avvia_zotero() {
+            stato.avviso = Some(e);
+            return;
+        }
+        for _ in 0..30 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            finestra = crate::incasso::finestra_zotero();
+            if finestra.is_some() {
+                break;
+            }
+        }
+    }
+    let Some(finestra) = finestra else {
+        stato.avviso = Some(
+            "Non trovo la finestra di Zotero. Aprilo e riprova.".into(),
+        );
         return;
     };
+    let Some(ospite) = crate::incasso::finestra_app() else {
+        stato.avviso = Some("Non trovo la finestra di FocusAnchor.".into());
+        return;
+    };
+    let area = stato.area_zotero.unwrap_or(egui::Rect::from_min_size(
+        egui::Pos2::ZERO,
+        egui::vec2(600.0, 360.0),
+    ));
+    if crate::incasso::aggancia(
+        finestra,
+        ospite,
+        area.min.x as i32,
+        area.min.y as i32,
+        area.width() as i32,
+        area.height() as i32,
+    ) {
+        stato.zotero_incassato = Some(finestra.0 as isize);
+        stato.aggiungi_notifica("Zotero agganciato dentro la finestra.");
+    } else {
+        stato.avviso = Some("Windows non ha permesso di agganciare Zotero.".into());
+    }
+}
 
+/// Stacca Zotero e lo rimette come finestra indipendente.
+pub fn stacca_zotero(stato: &mut StatoApp) {
+    if let Some(handle) = stato.zotero_incassato.take() {
+        let finestra = windows::Win32::Foundation::HWND(handle as *mut core::ffi::c_void);
+        crate::incasso::stacca(finestra);
+        stato.aggiungi_notifica("Zotero staccato: è di nuovo una finestra sua.");
+    }
+}
+
+/// Materiali Zotero: stato, ricarica e (se caricati) i documenti.
+fn materiali_zotero(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
+    egui::CollapsingHeader::new("📚 Materiali Zotero")
+        .default_open(true)
+        .show(ui, |ui| {
+            riquadro_zotero(ui, stato);
+            ui.add_space(4.0);
+            crate::ui_caricamento::pulsanti_caricamento(ui, stato);
+            ui.add_space(4.0);
+
+            let collegato = stato.snapshot_zotero.is_some();
+            let stesso_esame = stato
+                .esame_scelto
+                .and_then(|id| stato.collezioni.iter().find(|c| c.id == id))
+                .map(|c| c.nome.eq_ignore_ascii_case(esame))
+                .unwrap_or(false);
+
+            ui.horizontal_wrapped(|ui| {
+                let colore = if collegato { VERDE } else { TENUE };
+                let testo = if !collegato {
+                    "Zotero non caricato".to_string()
+                } else if !stesso_esame {
+                    "Questo esame non ha una collezione Zotero con lo stesso nome.".to_string()
+                } else {
+                    format!(
+                        "{} documenti · {} annotazioni",
+                        stato.documenti_esame.len(),
+                        stato.evidenziazioni.len()
+                    )
+                };
+                ui.label(egui::RichText::new(testo).size(12.0).color(colore));
+                if collegato && ui.small_button("🔄 Ricarica").clicked() {
+                    crate::ui_esami::ricarica_testi(stato);
+                }
+            });
+
+            if stato.snapshot_zotero.is_some()
+                && stato.esame_scelto.is_some()
+                && stato.documenti_esame.is_empty()
+            {
+                ui.label(
+                    egui::RichText::new("Nessun documento in questa collezione.")
+                        .size(12.0)
+                        .color(TENUE),
+                );
+            }
+        });
+}
+
+/// Link del notebook dell'esame.
+///
+/// Ogni esame ha il suo notebook con i testi caricati: salvando il link una
+/// volta, le domande vanno al notebook giusto.
+fn link_notebook(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
     let salvato = stato
         .config
         .notebook_esami
-        .get(&esame)
+        .get(esame)
         .cloned()
         .unwrap_or_default();
-    // Il testo si modifica direttamente nello stato: un buffer locale
-    // verrebbe ricreato a ogni frame e l'incolla sparirebbe.
     let mut salva = false;
     let mut apri = false;
 
-    egui::CollapsingHeader::new("📓 NotebookLM e pacchetto di studio")
-        .default_open(true)
-        .show(ui, |ui| {
-            ui.label(
-                egui::RichText::new(
-                    "Il link è salvato per questo esame. Da qui puoi aprire il notebook \
-                     e preparare una scheda da caricare manualmente come fonte.",
-                )
-                .size(12.0)
-                .color(TENUE),
-            );
-            egui::TextEdit::singleline(&mut stato.campo_notebook)
-                .hint_text("https://notebooklm.google.com/notebook/…")
-                .desired_width(f32::INFINITY)
-                .show(ui);
-            ui.horizontal_wrapped(|ui| {
-                if ui.button("💾 Salva link").clicked() {
-                    salva = true;
+    ui.label(
+        egui::RichText::new("Link del notebook")
+            .size(12.0)
+            .color(TENUE),
+    );
+    egui::TextEdit::singleline(&mut stato.campo_notebook)
+        .hint_text("https://notebooklm.google.com/notebook/…")
+        .desired_width(f32::INFINITY)
+        .show(ui);
+    ui.horizontal_wrapped(|ui| {
+        if ui.button("💾 Salva link").clicked() {
+            salva = true;
+        }
+        if !salvato.is_empty() && ui.button("▶ Apri").clicked() {
+            apri = true;
+        }
+        if ui.button("Crea / aggiorna scheda").clicked() {
+            crate::ui_archivi::genera_notebooklm(stato);
+        }
+        if ui.button("Anteprima scheda").clicked() {
+            match crate::archivi::leggi_notebooklm_esame_result(esame) {
+                Ok(testo) if !testo.trim().is_empty() => {
+                    stato.anteprima_notebooklm =
+                        Some((crate::archivi::nome_file_notebooklm(esame), testo));
+                    stato.avviso = None;
                 }
-                if !salvato.is_empty() && ui.button("▶ Apri NotebookLM").clicked() {
-                    apri = true;
-                }
-                if ui.button("Crea / aggiorna scheda").clicked() {
-                    crate::ui_archivi::genera_notebooklm(stato);
-                }
-                if ui.button("Anteprima scheda").clicked() {
-                    match crate::archivi::leggi_notebooklm_esame_result(&esame) {
-                        Ok(testo) if !testo.trim().is_empty() => {
-                            stato.anteprima_notebooklm =
-                                Some((crate::archivi::nome_file_notebooklm(&esame), testo));
-                            stato.avviso = None;
-                        }
-                        Ok(_) => crate::ui_archivi::segnala_errore_materiali(
+                Ok(_) => crate::ui_archivi::segnala_errore_materiali(
+                    stato,
+                    "La scheda è vuota. Generala di nuovo prima dell'anteprima.",
+                ),
+                Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
+            }
+        }
+        if ui.button("Copia scheda").clicked() {
+            match crate::archivi::leggi_notebooklm_esame_result(esame) {
+                Ok(testo) if !testo.trim().is_empty() => {
+                    match crate::notebooklm::copia_negli_appunti(&testo) {
+                        Ok(()) => crate::ui_archivi::segnala_successo_materiali(
                             stato,
-                            "La scheda è vuota. Generala di nuovo prima dell'anteprima.",
+                            "Scheda copiata negli appunti.",
                         ),
                         Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
                     }
                 }
-                if ui.button("Copia scheda").clicked() {
-                    match crate::archivi::leggi_notebooklm_esame_result(&esame) {
-                        Ok(testo) if !testo.trim().is_empty() => {
-                            match crate::notebooklm::copia_negli_appunti(&testo) {
-                                Ok(()) => crate::ui_archivi::segnala_successo_materiali(
-                                    stato,
-                                    "Scheda copiata negli appunti.",
-                                ),
-                                Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
-                            }
-                        }
-                        Ok(_) => crate::ui_archivi::segnala_errore_materiali(
-                            stato,
-                            "La scheda è vuota. Generala di nuovo prima di copiarla.",
-                        ),
-                        Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
-                    }
-                }
-                let percorso = crate::archivi::percorso_notebooklm_esame(&esame);
-                if percorso.exists() && ui.button("Mostra file").clicked() {
-                    match crate::archivi::rivela_file(&percorso) {
-                        Ok(()) => stato.avviso = None,
-                        Err(e) => stato.avviso = Some(e),
-                    }
-                }
-            });
-            let mut chiudi_anteprima = false;
-            if let Some((nome, contenuto)) = stato.anteprima_notebooklm.as_ref() {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Anteprima scheda").strong());
-                    if ui.small_button("Chiudi anteprima").clicked() {
-                        chiudi_anteprima = true;
-                    }
-                });
-                crate::ui::mostra_contenuto(ui, nome, contenuto);
+                Ok(_) => crate::ui_archivi::segnala_errore_materiali(
+                    stato,
+                    "La scheda è vuota. Generala di nuovo prima di copiarla.",
+                ),
+                Err(e) => crate::ui_archivi::segnala_errore_materiali(stato, &e),
             }
-            if chiudi_anteprima {
-                stato.anteprima_notebooklm = None;
+        }
+        let percorso = crate::archivi::percorso_notebooklm_esame(esame);
+        if percorso.exists() && ui.button("Mostra file").clicked() {
+            match crate::archivi::rivela_file(&percorso) {
+                Ok(()) => stato.avviso = None,
+                Err(e) => stato.avviso = Some(e),
             }
-            ui.label(
-                egui::RichText::new(
-                    "La scheda include le annotazioni Zotero disponibili e i riassunti. \
-                     NotebookLM non viene caricato automaticamente: dopo averla generata, \
-                     aggiungi il file come fonte nel notebook.",
-                )
-                .size(12.0)
-                .color(TENUE),
-            );
+        }
+    });
+
+    if let Some((nome, contenuto)) = stato.anteprima_notebooklm.clone() {
+        let mut chiudi = false;
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Anteprima scheda").strong());
+            if ui.small_button("Chiudi anteprima").clicked() {
+                chiudi = true;
+            }
         });
+        crate::ui::mostra_contenuto(ui, &nome, &contenuto);
+        if chiudi {
+            stato.anteprima_notebooklm = None;
+        }
+    }
 
     if salva {
-        // Il link puo' arrivare come indirizzo pulito oppure sparso in una
-        // frase ("guarda questo notebooklm.google.com/notebook/xyz"): in
-        // entrambi i casi si riconosce.
         let riconosciuto = crate::notebooklm::riconosci_link(&stato.campo_notebook);
         match riconosciuto.or_else(|| crate::notebooklm::normalizza_link(&stato.campo_notebook)) {
             Some(link) => {
                 stato.campo_notebook = link.clone();
-                salva_link_con_persistenza(stato, &esame, &link, |stato| {
+                salva_link_con_persistenza(stato, esame, &link, |stato| {
                     stato.salva_configurazione_con_esito()
                 });
             }
@@ -223,6 +403,59 @@ fn sezione_notebook(ui: &mut egui::Ui, stato: &mut StatoApp) {
             crate::ui_archivi::segnala_successo_materiali(stato, "NotebookLM aperto nel browser.");
         }
     }
+}
+
+/// Testi dell'esame, da spuntare in 2 o 3.
+fn testi_da_alternare(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    if stato.documenti_esame.is_empty() {
+        return;
+    }
+    egui::CollapsingHeader::new("📄 Testi da alternare")
+        .default_open(true)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("Spunta 2 o 3 testi: la sessione ruoterà fra loro.")
+                        .size(12.0)
+                        .color(TENUE),
+                );
+                badge(
+                    ui,
+                    &format!("{}/{}", stato.testi_scelti.len(), MAX_TESTI),
+                    VERDE,
+                );
+            });
+            elenco_testi(ui, stato);
+            if stato.testi_scelti.len() == 1 {
+                ui.label(
+                    egui::RichText::new("Con un solo testo non c'e' interleaving.")
+                        .size(12.0)
+                        .color(crate::ui::GIALLO),
+                );
+            }
+        });
+}
+
+/// Le carte da ripassare per questo esame.
+///
+/// Il ripasso completo sta in "Altre opzioni"; qui serve il numero, perche'
+/// "quante carte ho su questo esame" e' parte del quadro dell'esame.
+fn ripasso(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    stato.sincronizza_memoria();
+    let oggi = crate::carte::oggi();
+    let scadute = stato.memoria.scadute(&oggi).len();
+    let totale = stato.memoria.carte.len();
+
+    ui.horizontal_wrapped(|ui| {
+        ui.label(egui::RichText::new("🔁 Ripasso").size(13.0).color(TENUE));
+        if totale == 0 {
+            badge(ui, "nessuna carta", TENUE);
+        } else {
+            badge(ui, &format!("{totale} carte"), VIOLA);
+            let colore = if scadute == 0 { VERDE } else { ARANCIO };
+            badge(ui, &format!("{scadute} da ripassare"), colore);
+        }
+    });
 }
 
 fn salva_link_con_persistenza(
@@ -255,52 +488,6 @@ fn salva_link_con_persistenza(
             stato.conferma = None;
             stato.avviso = Some(format!("Link non salvato: {e}"));
         }
-    }
-}
-
-/// Secondo menu: i testi dell'esame, da spuntare in 2 o 3.
-fn sezione_testi(ui: &mut egui::Ui, stato: &mut StatoApp) {
-    if stato.esame_scelto.is_none() {
-        return;
-    }
-    if stato.documenti_esame.is_empty() {
-        ui.label(
-            egui::RichText::new("Questo esame non ha documenti con un titolo.")
-                .size(13.0)
-                .color(TENUE),
-        );
-        return;
-    }
-
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new("Testi da alternare")
-                .size(14.0)
-                .strong(),
-        );
-        badge(
-            ui,
-            &format!("{}/{}", stato.testi_scelti.len(), MAX_TESTI),
-            VERDE,
-        );
-    });
-    ui.label(
-        egui::RichText::new(
-            "Spunta 2 o 3 testi: la sessione ruoterà fra loro ogni 10-12 minuti.",
-        )
-        .size(12.0)
-        .color(TENUE),
-    );
-    ui.add_space(4.0);
-
-    elenco_testi(ui, stato);
-
-    if stato.testi_scelti.len() == 1 {
-        ui.label(
-            egui::RichText::new("Con un solo testo non c'e' interleaving: aggiungine un altro.")
-                .size(12.0)
-                .color(crate::ui::GIALLO),
-        );
     }
 }
 

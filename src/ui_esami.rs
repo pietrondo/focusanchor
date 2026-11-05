@@ -216,7 +216,16 @@ fn carica_esami_con(stato: &mut StatoApp, cartella_app: &std::path::Path) {
     let id = if elenco.len() == 1 {
         Some(elenco[0].id)
     } else {
-        id_precedente.filter(|id| elenco.iter().any(|c| c.id == *id))
+        id_precedente
+            .filter(|id| elenco.iter().any(|c| c.id == *id))
+            // Riapre l'ultimo esame usato: l'app deve partire con i
+            // materiali davanti, non con la scelta da rifare.
+            .or_else(|| {
+                elenco
+                    .iter()
+                    .find(|c| c.nome.eq_ignore_ascii_case(&stato.config.esame_corrente))
+                    .map(|c| c.id)
+            })
     };
     let materiali = match id {
         Some(id) => leggi_materiali(&snapshot, id, 60, 40).map(Some),

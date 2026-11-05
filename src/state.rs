@@ -106,6 +106,13 @@ pub struct StatoApp {
     /// Non dipende da Zotero: si puo' chiedere anche a Zotero chiuso, per
     /// qualsiasi esame che abbia una scheda.
     pub esame_notebooklm: Option<String>,
+    /// Finestra di Zotero agganciata dentro la nostra, se c'e'.
+    ///
+    /// Conserva l'handle per poterla staccare e ripristinare: una finestra
+    /// agganciata che resta orfana sparisce dallo schermo.
+    pub zotero_incassato: Option<isize>,
+    /// Riquadro dove disegnare Zotero, in punti egui.
+    pub area_zotero: Option<egui::Rect>,
     /// Domande a NotebookLM e loro risposte.
     pub chiedi: crate::notebooklm::Chiedi,
     /// Generazione di flashcard e lettura delle fonti.
@@ -174,6 +181,8 @@ impl StatoApp {
             campo_domanda: String::new(),
             domanda_notebooklm: String::new(),
             esame_notebooklm: None,
+            zotero_incassato: None,
+            area_zotero: None,
             chiedi: crate::notebooklm::Chiedi::nuovo(),
             genera: crate::notebooklm::Genera::nuovo(),
             conferma: None,

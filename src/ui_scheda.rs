@@ -7,16 +7,14 @@ use crate::ui::TENUE;
 
 /// Scheda dell'esame: link al corso, crediti, modalita' e data d'appello.
 ///
-/// Sono i dati che servono per decidere quanto studiare e quando: la data
-/// diventa il conto alla rovescia mostrato durante la sessione.
-pub fn sezione_scheda_esame(ui: &mut egui::Ui, stato: &mut StatoApp) {
-    let Some(esame) = stato
-        .esame_scelto
-        .and_then(|id| stato.collezioni.iter().find(|c| c.id == id))
-        .map(|c| c.nome.clone())
-    else {
+/// L'esame arriva dall'esterno: la scheda deve funzionare anche quando
+/// Zotero non e' caricato, quindi non puo' dipendere dalla collezione
+/// selezionata.
+pub fn sezione_scheda_esame(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
+    if esame.trim().is_empty() {
         return;
-    };
+    }
+    let esame = esame.to_string();
 
     let mut info = stato.config.esami.get(&esame).cloned().unwrap_or_default();
     let mut salva = false;

@@ -442,10 +442,10 @@ mod test_notebooklm {
     use crate::state::StatoApp;
     use eframe::egui;
 
-    /// Il pannello "Chiedi a NotebookLM" deve comparire nel setup con gli
-    /// esami che hanno una scheda, senza richiedere Zotero.
+    /// Il pannello "Chiedi a NotebookLM" lavora sull'esame che riceve e non
+    /// richiede Zotero.
     #[test]
-    fn il_pannello_chiedi_compare_senza_zotero() {
+    fn il_pannello_chiedi_funziona_senza_zotero() {
         let ctx = egui::Context::default();
         let mut stato = StatoApp::nuovo();
         stato.config.esami.clear();
@@ -456,7 +456,6 @@ mod test_notebooklm {
                 ..Default::default()
             },
         );
-        // Nessuna collezione Zotero: il pannello deve funzionare lo stesso.
 
         let output = ctx.run(
             egui::RawInput {
@@ -468,7 +467,7 @@ mod test_notebooklm {
             },
             |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato);
+                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato, "Storia romana");
                 });
             },
         );
@@ -481,19 +480,66 @@ mod test_notebooklm {
             })
             .collect();
 
-        assert!(testi.iter().any(|t| t.contains("Storia romana")), "{testi:?}");
         assert!(testi.iter().any(|t| t.contains("Chiedi a NotebookLM")), "{testi:?}");
         assert!(testi.iter().any(|t| t.contains("Genera flashcard")), "{testi:?}");
         assert!(testi.iter().any(|t| t.contains("Carica la scheda")), "{testi:?}");
     }
 
-    /// Senza esami con una scheda il pannello spiega cosa manca invece di
-    /// restare vuoto.
+    /// La scheda dell'esame deve tenere Zotero e NotebookLM insieme, con un
+    /// solo selettore: e' il punto dell'interfaccia unica.
     #[test]
-    fn senza_esami_il_pannello_spiega_cosa_manca() {
+    fn la_scheda_esame_tiene_insieme_zotero_e_notebooklm() {
         let ctx = egui::Context::default();
         let mut stato = StatoApp::nuovo();
         stato.config.esami.clear();
+        stato.config.esami.insert(
+            "Storia romana".into(),
+            crate::config::InfoEsame {
+                data_esame: "09/12/2026".into(),
+                ..Default::default()
+            },
+        );
+
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(620.0, 1600.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    crate::ui_zotero::sezione_esame(ui, &mut stato);
+                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
+                });
+            },
+        );
+        let testi: Vec<&str> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        // Un solo selettore, e le due sezioni nella stessa scheda.
+        assert!(
+            testi.iter().filter(|t| t.contains("Storia romana")).count() >= 1,
+            "{testi:?}"
+        );
+        assert!(testi.iter().any(|t| t.contains("Materiali Zotero")), "{testi:?}");
+        assert!(testi.iter().any(|t| t.contains("NotebookLM")), "{testi:?}");
+    }
+
+    /// Senza esami il riquadro spiega cosa manca invece di restare vuoto.
+    #[test]
+    fn senza_esami_la_scheda_spiega_cosa_manca() {
+        let ctx = egui::Context::default();
+        let mut stato = StatoApp::nuovo();
+        stato.config.esami.clear();
+        stato.collezioni.clear();
 
         let output = ctx.run(
             egui::RawInput {
@@ -505,7 +551,8 @@ mod test_notebooklm {
             },
             |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    crate::ui_notebooklm::sezione_chiedi(ui, &mut stato);
+                    crate::ui_zotero::sezione_esame(ui, &mut stato);
+                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
                 });
             },
         );
@@ -519,7 +566,111 @@ mod test_notebooklm {
             .collect();
 
         assert!(
-            testi.iter().any(|t| t.contains("Nessun esame con una scheda")),
+            testi.iter().any(|t| t.contains("Nessun esame caricato")),
+            "{testi:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod test_incasso {
+    use crate::state::StatoApp;
+    use eframe::egui;
+
+    /// Il riquadro di Zotero deve esserci e offrire l'aggancio: e' il modo
+    /// per avere i PDF dentro la finestra.
+    #[test]
+    fn il_riquadro_zotero_offre_l_aggancio() {
+        let ctx = egui::Context::default();
+        let mut stato = StatoApp::nuovo();
+        stato.config.esami.clear();
+        stato.config.esami.insert(
+            "Storia romana".into(),
+            crate::config::InfoEsame::default(),
+        );
+
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(620.0, 900.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    crate::ui_zotero::sezione_esame(ui, &mut stato);
+                });
+            },
+        );
+        let testi: Vec<&str> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            testi.iter().any(|t| t.contains("Aggancia Zotero")),
+            "{testi:?}"
+        );
+        // La posizione del riquadro viene registrata per il ciclo principale.
+        assert!(stato.area_zotero.is_some());
+    }
+}
+
+#[cfg(test)]
+mod test_due_colonne {
+    use crate::state::StatoApp;
+    use eframe::egui;
+
+    /// A finestra larga il setup deve mostrare Zotero e NotebookLM
+    /// affiancati: si apre l'app e i materiali sono gia' davanti.
+    #[test]
+    fn a_finestra_larga_zotero_e_notebooklm_stanno_affiancati() {
+        let ctx = egui::Context::default();
+        let (mittente, _canale) = std::sync::mpsc::channel();
+        let mut stato = StatoApp::nuovo();
+        stato.config.esami.clear();
+        stato.config.esami.insert(
+            "Storia romana".into(),
+            crate::config::InfoEsame {
+                data_esame: "09/12/2026".into(),
+                ..Default::default()
+            },
+        );
+
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1120.0, 900.0),
+                )),
+                ..Default::default()
+            },
+            |ctx| {
+                crate::ui_setup::disegna(
+                    ctx,
+                    &mut stato,
+                    &mut crate::audio::MotoreAudio::nuovo(),
+                    &mittente,
+                );
+            },
+        );
+        let testi: Vec<&str> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(testo) => Some(testo.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(testi.iter().any(|t| t.contains("IL TUO ESAME")), "{testi:?}");
+        assert!(
+            testi.iter().any(|t| t.contains("CHIEDI A NOTEBOOKLM")),
             "{testi:?}"
         );
     }
@@ -557,6 +708,7 @@ mod test_link {
             let _ = ctx.run(inp, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     crate::ui_zotero::sezione_esame(ui, &mut stato);
+                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
                 });
             });
         }
@@ -592,6 +744,7 @@ mod test_materiali {
         let output = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 crate::ui_zotero::sezione_esame(ui, &mut stato);
+                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
             });
         });
         let testi: Vec<&str> = output
@@ -604,13 +757,13 @@ mod test_materiali {
             .collect();
 
         assert!(
-            testi.iter().any(|testo| testo.contains("MATERIALI")),
+            testi.iter().any(|testo| testo.contains("Materiali Zotero")),
             "{testi:?}"
         );
         assert!(
             testi
                 .iter()
-                .any(|testo| testo.contains("Ricarica da Zotero")),
+                .any(|testo| testo.contains("NotebookLM")),
             "{testi:?}"
         );
         assert!(
@@ -657,6 +810,7 @@ mod test_anteprima_notebooklm {
             let output = ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     crate::ui_zotero::sezione_esame(ui, stato);
+                    crate::ui_zotero::sezione_notebooklm(ui, stato);
                 });
             });
             output
@@ -687,6 +841,7 @@ mod test_anteprima_notebooklm {
         let output = ctx.run(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 crate::ui_zotero::sezione_esame(ui, &mut stato);
+                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
             });
         });
         let chiudi = output.shapes.iter().find_map(|shape| match &shape.shape {
@@ -722,6 +877,7 @@ mod test_anteprima_notebooklm {
         let _ = ctx.run(click, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 crate::ui_zotero::sezione_esame(ui, &mut stato);
+                    crate::ui_zotero::sezione_notebooklm(ui, &mut stato);
             });
         });
         assert!(stato.anteprima_notebooklm.is_none());

@@ -17,6 +17,7 @@ mod comando;
 mod config;
 mod finestre;
 mod guardia;
+mod incasso;
 mod interleaving;
 mod notebooklm;
 mod sessione;
@@ -64,7 +65,9 @@ use crate::state::StatoApp;
 const DIMENSIONE_OVERLAY: [f32; 2] = [420.0, 380.0];
 
 /// Dimensione della finestra principale in modalita' Configurazione.
-const DIMENSIONE_CONFIGURAZIONE: [f32; 2] = [620.0, 860.0];
+///
+/// Larga abbastanza per due colonne: Zotero a sinistra, NotebookLM a destra.
+const DIMENSIONE_CONFIGURAZIONE: [f32; 2] = [1120.0, 900.0];
 
 /// Struttura principale dell'applicazione.
 pub(crate) struct AppFocus {
@@ -81,6 +84,40 @@ pub(crate) struct AppFocus {
 }
 
 impl AppFocus {
+    /// Tiene la finestra di Zotero dentro la nostra, dove l'ha disegnata la UI.
+    ///
+    /// La posizione va ricalcolata a ogni frame: finestra ridimensionata,
+    /// scorrimento, cambio di vista. Se Zotero e' stato chiuso, l'aggancio
+    /// non ha piu' senso e si dimentica.
+    fn sistema_zotero_incassato(&mut self, ctx: &egui::Context) {
+        let Some(handle) = self.stato.zotero_incassato else {
+            return;
+        };
+        // Durante la sessione la finestra diventa l'overlay 420x380:
+        // Zotero non ci sta, e va lasciato libero.
+        if self.stato.in_sessione() {
+            ui_zotero::stacca_zotero(&mut self.stato);
+            return;
+        }
+        let finestra = windows::Win32::Foundation::HWND(handle as *mut core::ffi::c_void);
+        if !crate::incasso::e_agganciata(finestra) {
+            // Zotero e' stato chiuso: non c'e' piu' niente da tenere.
+            self.stato.zotero_incassato = None;
+            return;
+        }
+        let Some(area) = self.stato.area_zotero else {
+            return;
+        };
+        let scala = ctx.pixels_per_point();
+        crate::incasso::posiziona(
+            finestra,
+            (area.min.x * scala).round() as i32,
+            (area.min.y * scala).round() as i32,
+            (area.width() * scala).round() as i32,
+            (area.height() * scala).round() as i32,
+        );
+    }
+
     fn nuovo(cc: &eframe::CreationContext<'_>) -> Self {
         ui::applica_tema(&cc.egui_ctx);
         let (mittente, canale) = std::sync::mpsc::channel();
@@ -241,6 +278,7 @@ impl eframe::App for AppFocus {
         } else {
             ui_setup::disegna(ctx, &mut self.stato, &mut self.audio, &self.mittente);
         }
+        self.sistema_zotero_incassato(ctx);
         self.aggiorna_vista(ctx);
         ctx.request_repaint();
     }
@@ -248,6 +286,12 @@ impl eframe::App for AppFocus {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         // `termina_sessione` ripristina gia' il file `hosts` e ferma la guardia.
         self.stato.termina_sessione();
+        // Una finestra agganciata che resta figlia di una finestra chiusa
+        // sparisce dallo schermo: si stacca sempre.
+        if let Some(handle) = self.stato.zotero_incassato {
+            let finestra = windows::Win32::Foundation::HWND(handle as *mut core::ffi::c_void);
+            crate::incasso::stacca(finestra);
+        }
         self.stato.salva_configurazione();
         self.audio.ferma_voce();
         self.audio.ferma_sottofondo();

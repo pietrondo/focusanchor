@@ -172,6 +172,22 @@ elevati resta attivo solo il Guardiano Finestre (Livello 2).
 3. Scegli l'esame (la collezione) e spunta 2 o 3 testi.
 4. Premi **Inizia la sessione**.
 
+**Zotero dentro la finestra**
+
+Il pulsante **📌 Aggancia Zotero qui** porta la finestra di Zotero dentro
+FocusAnchor: i PDF si aprono e si sottolineano senza cambiare finestra. Se
+Zotero non è aperto, l'app lo avvia e aspetta che la finestra esista.
+
+- **⏏ Stacca Zotero** lo rimette come finestra indipendente.
+- All'uscita dall'app Zotero viene sempre staccato: una finestra agganciata
+  a una finestra chiusa sparirebbe dallo schermo.
+- Durante una sessione viene staccato da solo: l'overlay è 420×380 e Zotero
+  non ci sta.
+
+È un aggancio di finestre (`SetParent`), non un'API pensata per questo:
+Microsoft non lo documenta come supportato fra processi diversi. Funziona,
+ma se Zotero si comporta in modo strano il rimedio è **Stacca**.
+
 Durante la sessione:
 
 - **Leggi il testo copiato** legge ad alta voce quello che hai copiato con `Ctrl+C`.

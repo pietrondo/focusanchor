@@ -53,30 +53,30 @@ pub fn disegna(
                 .show(ui, |ui| {
                     let disponibili = !stato.collezioni.is_empty();
 
-                    // Gli appelli vengono per primi: e' la domanda "quando
-                    // devo finire" e decide quale obiettivo scegliere.
+                    // Due colonne: Zotero a sinistra, NotebookLM a destra.
+                    // Vengono per prime: aprendo l'app i materiali devono
+                    // essere gia' davanti, non dopo tre scorrimenti.
+                    let due_colonne = ui.available_width() >= 760.0;
+                    if due_colonne {
+                        ui.columns(2, |colonne| {
+                            colonna_zotero(
+                                &mut colonne[0],
+                                stato,
+                                audio,
+                                mittente,
+                                disponibili,
+                            );
+                            colonna_notebooklm(&mut colonne[1], stato);
+                        });
+                    } else {
+                        colonna_zotero(ui, stato, audio, mittente, disponibili);
+                        colonna_notebooklm(ui, stato);
+                    }
+
+                    // Gli appelli sotto: e' la domanda "quando devo finire",
+                    // e in testata c'e' gia' il conto alla rovescia.
                     scheda(ui, l, "📅", "I tuoi appelli", ACCENTO, |ui| {
                         crate::ui_appelli::sezione_appelli(ui, stato);
-                    });
-
-                    scheda(ui, l, "🎯", "Obiettivo", ACCENTO, |ui| {
-                        sezione_obiettivo(ui, stato, disponibili);
-                    });
-
-                    scheda(ui, l, "📚", "Esame e testi", VERDE, |ui| {
-                        crate::ui_zotero::sezione_esame(ui, stato);
-                    });
-
-                    scheda(ui, l, "📓", "Chiedi a NotebookLM", VIOLA, |ui| {
-                        crate::ui_notebooklm::sezione_chiedi(ui, stato);
-                    });
-
-                    scheda(ui, l, "⏱", "Durata", ACCENTO, |ui| {
-                        sezione_durata(ui, stato);
-                    });
-
-                    scheda(ui, l, "🎧", "Suono", ARANCIO, |ui| {
-                        crate::ui_audio::sezione_audio(ui, stato, audio);
                     });
 
                     egui::CollapsingHeader::new("Altre opzioni: archivio, ripasso e storico")
@@ -92,6 +92,42 @@ pub fn disegna(
                     ui.add_space(10.0);
                 });
         });
+}
+
+/// Colonna sinistra: obiettivo sessione + esame Zotero + durata e suono.
+fn colonna_zotero(
+    ui: &mut egui::Ui,
+    stato: &mut StatoApp,
+    audio: &mut crate::audio::MotoreAudio,
+    mittente: &Sender<Segnale>,
+    disponibili: bool,
+) {
+    let l = crate::ui::larghezza_schede(ui);
+
+    scheda(ui, l, "🎯", "Obiettivo", ACCENTO, |ui| {
+        sezione_obiettivo(ui, stato, disponibili);
+    });
+
+    scheda(ui, l, "🎓", "Il tuo esame", VERDE, |ui| {
+        crate::ui_zotero::sezione_esame(ui, stato);
+    });
+
+    scheda(ui, l, "⏱", "Durata", ACCENTO, |ui| {
+        sezione_durata(ui, stato);
+    });
+
+    scheda(ui, l, "🎧", "Suono", ARANCIO, |ui| {
+        crate::ui_audio::sezione_audio(ui, stato, audio);
+    });
+    let _ = mittente;
+}
+
+/// Colonna destra: NotebookLM per l'esame scelto a sinistra.
+fn colonna_notebooklm(ui: &mut egui::Ui, stato: &mut StatoApp) {
+    let l = crate::ui::larghezza_schede(ui);
+    scheda(ui, l, "📓", "Chiedi a NotebookLM", VIOLA, |ui| {
+        crate::ui_zotero::sezione_notebooklm(ui, stato);
+    });
 }
 
 /// Intestazione con nome dell'app e stato dei punti.

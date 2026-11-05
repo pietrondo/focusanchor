@@ -15,37 +15,17 @@ use crate::ui::{badge, ACCENTO, GIALLO, TENUE, VERDE};
 const MASSIMO_DOMANDA: usize = 240;
 
 /// Pannello "Chiedi a NotebookLM": domanda, invio e risposta.
-pub fn sezione_chiedi(ui: &mut egui::Ui, stato: &mut StatoApp) {
-    let esami: Vec<String> = stato.config.esami.keys().cloned().collect();
-    if esami.is_empty() {
-        ui.label(
-            egui::RichText::new(
-                "Nessun esame con una scheda: aprine uno da Zotero e salva la scheda \
-                 per collegare il suo notebook.",
-            )
-            .size(12.0)
-            .color(TENUE),
-        );
+///
+/// L'esame arriva dall'esterno: il selettore e' uno solo per tutta la
+/// finestra, altrimenti Zotero e NotebookLM possono parlare di due esami
+/// diversi nello stesso momento.
+pub fn sezione_chiedi(ui: &mut egui::Ui, stato: &mut StatoApp, esame: &str) {
+    if esame.trim().is_empty() {
         return;
     }
-
-    let scelto = esame_scelto(stato, &esami);
-    stato.esame_notebooklm = Some(scelto.clone());
+    let scelto = esame.to_string();
 
     ui.horizontal_wrapped(|ui| {
-        egui::ComboBox::from_id_salt("esame_notebooklm")
-            .width((crate::ui::larghezza(ui) * 0.5).clamp(120.0, 300.0))
-            .selected_text(crate::ui::accorcia(&scelto, 28))
-            .show_ui(ui, |ui| {
-                for esame in &esami {
-                    let etichetta = crate::ui::accorcia(esame, 34);
-                    ui.selectable_value(
-                        &mut stato.esame_notebooklm,
-                        Some(esame.clone()),
-                        etichetta,
-                    );
-                }
-            });
         if notebook_di(stato, &scelto).is_some() {
             badge(ui, "notebook collegato", VERDE);
         } else {
@@ -266,22 +246,6 @@ fn carica_scheda(stato: &mut StatoApp, esame: &str) {
         return;
     };
     stato.genera.carica(&notebook, esame, percorso);
-}
-
-/// Esame scelto: quello della tendina, o quello aperto da Zotero, o il primo.
-fn esame_scelto(stato: &StatoApp, esami: &[String]) -> String {
-    stato
-        .esame_notebooklm
-        .clone()
-        .filter(|e| esami.iter().any(|x| x == e))
-        .unwrap_or_else(|| {
-            let corrente = stato.nome_esame();
-            if esami.iter().any(|e| e == &corrente) {
-                corrente
-            } else {
-                esami[0].clone()
-            }
-        })
 }
 
 /// Identificativo del notebook dell'esame, ricavato dal link salvato.

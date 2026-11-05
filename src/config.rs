@@ -70,6 +70,12 @@ pub struct Configurazione {
     /// Modello usato per l'assistente AI, in formato `provider/modello`.
     #[serde(default = "modello_ai_default")]
     pub modello_ai: String,
+    /// Ultimo esame aperto.
+    ///
+    /// Serve a riaprire l'app con i materiali gia' davanti, invece di
+    /// ricominciare dalla scelta dell'esame ogni volta.
+    #[serde(default)]
+    pub esame_corrente: String,
 }
 
 impl Default for Configurazione {
@@ -91,6 +97,7 @@ impl Default for Configurazione {
             xp_punti: 0,
             xp_distrazioni: 0,
             modello_ai: modello_ai_default(),
+            esame_corrente: String::new(),
         }
     }
 }
