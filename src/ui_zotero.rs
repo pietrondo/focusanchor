@@ -10,8 +10,11 @@ use eframe::egui;
 use crate::state::{StatoApp, MAX_TESTI};
 use crate::ui::{badge, ARANCIO, TENUE, VERDE, VIOLA};
 
-/// Quanto si aspetta la finestra di Zotero prima di rinunciare.
-const ATTESA_ZOTERO: std::time::Duration = std::time::Duration::from_secs(15);
+/// Quanto passa fra due tentativi di aggancio.
+const INTERVALLO_ATTESA: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Quanti tentativi prima di rinunciare (15 secondi).
+const TENTATIVI: u8 = 60;
 
 /// Elenco degli esami su cui lavorare.
 ///
@@ -194,7 +197,10 @@ fn aggancia_zotero(stato: &mut StatoApp) {
             stato.avviso = Some(e);
             return;
         }
-        stato.attesa_zotero = Some(std::time::Instant::now() + ATTESA_ZOTERO);
+        stato.attesa_zotero = Some((
+            0,
+            std::time::Instant::now() + INTERVALLO_ATTESA,
+        ));
         stato.aggiungi_notifica("Zotero si sta avviando: l'aggancio avviene da solo.");
         return;
     };
@@ -204,22 +210,32 @@ fn aggancia_zotero(stato: &mut StatoApp) {
 /// Riprova l'aggancio di Zotero, senza bloccare l'interfaccia.
 ///
 /// La finestra di Zotero puo' mettere qualche secondo ad arrivare: si
-/// prova a ogni frame e si smette dopo `ATTESA_ZOTERO`.
+/// prova ogni 250 ms e si smette dopo `TENTATIVI` tentativi.
+///
+/// Non a ogni frame: trovare la finestra costa un elenco dei processi
+/// (11 ms ciascuno), e sessanta volte al secondo sarebbero due terzi di
+/// una CPU.
 pub fn continua_aggancio(stato: &mut StatoApp) {
-    let Some(scadenza) = stato.attesa_zotero else {
+    let Some((tentativi, prossimo)) = stato.attesa_zotero else {
         return;
     };
+    let adesso = std::time::Instant::now();
+    if adesso < prossimo {
+        return;
+    }
     if let Some(finestra) = crate::incasso::finestra_zotero() {
         stato.attesa_zotero = None;
         aggancia_ora(stato, finestra);
         return;
     }
-    if std::time::Instant::now() >= scadenza {
+    if tentativi + 1 >= TENTATIVI {
         stato.attesa_zotero = None;
         stato.avviso = Some(
             "Zotero non compare: aprilo a mano e premi di nuovo «Aggancia Zotero qui».".into(),
         );
+        return;
     }
+    stato.attesa_zotero = Some((tentativi + 1, adesso + INTERVALLO_ATTESA));
 }
 
 /// Aggancia la finestra di Zotero a quella di FocusAnchor.
@@ -241,6 +257,9 @@ fn aggancia_ora(stato: &mut StatoApp, finestra: windows::Win32::Foundation::HWND
         area.height() as i32,
     ) {
         stato.zotero_incassato = Some(finestra.0 as isize);
+        // L'avviso di un tentativo precedente non deve restare accanto
+        // alla conferma verde.
+        stato.avviso = None;
         stato.aggiungi_notifica("Zotero agganciato dentro la finestra.");
     } else {
         stato.avviso = Some("Windows non ha permesso di agganciare Zotero.".into());

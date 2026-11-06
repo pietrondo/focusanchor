@@ -4,10 +4,109 @@
 //! Stanno qui e non in `ui_setup.rs` per non far crescere quel file oltre il
 //! limite: sono prove dell'interfaccia intera, non di una singola funzione.
 
+/// Uno stato con la configurazione pulita.
+///
+/// `StatoApp::nuovo()` legge la configurazione e lo storico veri di chi
+/// esegue il test: con esami gia' salvati il layout e' un altro, e il test
+/// passerebbe su una macchina e fallirebbe su un'altra. Qui si riparte da
+/// zero: configurazione, XP, storico e tempi dei documenti.
+fn stato_pulito() -> crate::state::StatoApp {
+    let mut stato = crate::state::StatoApp::nuovo();
+    stato.config = crate::config::Configurazione::default();
+    stato.xp.punti = 0;
+    stato.xp.distrazioni = 0;
+    stato.storico.clear();
+    stato.secondi_documenti.clear();
+    stato.testo_parole = crate::config::lista_alle_righe(&stato.config.parole_vietate);
+    stato
+}
+
 #[cfg(test)]
 mod test {
-    use crate::state::StatoApp;
+    use super::stato_pulito;
     use eframe::egui;
+
+    /// Con un nome di esame lunghissimo il setup non deve sfondare.
+    ///
+    /// Il nome piu' lungo che esiste davvero e' "Economia e storia della
+    /// globalizzazione 19/10/2026, 22:53:52": viene dal portale, non da
+    /// me, e il riquadro degli appelli deve reggerlo.
+    #[test]
+    fn il_setup_regga_un_nome_di_esame_lunghissimo() {
+        let ctx = egui::Context::default();
+        let (mittente, _ricevitore) = std::sync::mpsc::channel();
+        let mut stato = stato_pulito();
+        stato.config.esami.insert(
+            "Economia e storia della globalizzazione 19/10/2026, 22:53:52".to_string(),
+            crate::config::InfoEsame {
+                url: "https://www.unimi.it/it/corsi/insegnamenti".to_string(),
+                crediti: 9,
+                modalita: "Scritto".to_string(),
+                non_frequentante: true,
+                data_esame: "16/12/2026".to_string(),
+            },
+        );
+
+        for (w, h) in [(560.0, 560.0), (620.0, 860.0)] {
+            // Due frame alla stessa dimensione: `used_rect()` dopo un solo
+            // frame riporta il rettangolo del frame precedente (o NaN al
+            // primo giro), quindi da solo non direbbe niente sul layout.
+            let mut output = None;
+            for _ in 0..2 {
+                let mut inp = egui::RawInput::default();
+                inp.screen_rect = Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(w, h),
+                ));
+                output = Some(ctx.run(inp, |ctx| {
+                    crate::ui_setup::disegna(
+                        ctx,
+                        &mut stato,
+                        &mut crate::audio::MotoreAudio::nuovo(),
+                        &mittente,
+                    );
+                }));
+            }
+            let usato = ctx.used_rect();
+            let schermo = ctx.screen_rect();
+            assert!(
+                usato.right().is_finite(),
+                "larghezza del pannello non calcolata a {w}x{h}"
+            );
+            assert!(
+                usato.right() <= schermo.right() + 1.0,
+                "contenuto oltre il bordo destro a {w}x{h}: usato={:.1} schermo={:.1}",
+                usato.right(),
+                schermo.right()
+            );
+
+            // Il nome dell'esame deve arrivare a schermo (cioe' il caso e'
+            // davvero esercitato) e nessun testo deve uscire dalla finestra.
+            let testi: Vec<String> = output
+                .expect("frame disegnato")
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::epaint::Shape::Text(testo) => Some((
+                        testo.galley.job.text.clone(),
+                        testo.pos.x + testo.galley.rect.right(),
+                    )),
+                    _ => None,
+                })
+                .map(|(testo, destra)| {
+                    assert!(
+                        destra <= schermo.right() + 1.0,
+                        "testo oltre il bordo destro a {w}x{h}: «{testo}» a {destra:.1}"
+                    );
+                    testo
+                })
+                .collect();
+            assert!(
+                testi.iter().any(|t| t.contains("Economia e storia della")),
+                "il nome dell'esame non compare a {w}x{h}: {testi:?}"
+            );
+        }
+    }
 
     /// Costruisce un input con una certa dimensione e il puntatore in un punto.
     fn input(larghezza: f32, altezza: f32, pos: egui::Pos2) -> egui::RawInput {
@@ -28,7 +127,7 @@ mod test {
     fn il_setup_non_esplode_a_nessuna_dimensione() {
         let ctx = egui::Context::default();
         let (mittente, _canale) = std::sync::mpsc::channel();
-        let mut stato = StatoApp::nuovo();
+        let mut stato = stato_pulito();
         let mut audio = crate::audio::MotoreAudio::nuovo();
 
         // Dimensioni realistiche e non: la finestra puo' essere ridotta,
@@ -89,7 +188,7 @@ mod test {
     fn l_overlay_non_esplode_a_nessuna_dimensione() {
         let ctx = egui::Context::default();
         let (mittente, _canale) = std::sync::mpsc::channel();
-        let mut stato = StatoApp::nuovo();
+        let mut stato = stato_pulito();
         let mut audio = crate::audio::MotoreAudio::nuovo();
         stato.config.obiettivo = "Prova".to_string();
         stato.avvia_sessione(&mittente);
@@ -119,7 +218,7 @@ mod test {
     fn la_sessione_completata_produce_e_mostra_il_riepilogo_reale() {
         let ctx = egui::Context::default();
         let (mittente, _canale) = std::sync::mpsc::channel();
-        let mut stato = StatoApp::nuovo();
+        let mut stato = stato_pulito();
         stato.config.obiettivo = "Ripasso appello reale".to_string();
         stato.avvia_sessione(&mittente);
         stato.task.avvia(1);
@@ -175,7 +274,7 @@ mod test {
 
 #[cfg(test)]
 mod test_appelli {
-    use crate::state::StatoApp;
+    use super::stato_pulito;
     use crate::ui::{ACCENTO, ARANCIO, GIALLO, TENUE};
     use eframe::egui;
 
@@ -184,8 +283,7 @@ mod test_appelli {
     #[test]
     fn il_riquadro_appelli_mostra_le_date_e_il_conto_alla_rovescia() {
         let ctx = egui::Context::default();
-        let mut stato = StatoApp::nuovo();
-        stato.config.esami.clear();
+        let mut stato = stato_pulito();
         // Due appelli a distanza di giorni diversi: il piu' vicino viene
         // prima e i due non devono confondersi.
         let oggi = chrono::Local::now().date_naive();
@@ -238,8 +336,7 @@ mod test_appelli {
     /// e' il formato in cui l'utente la vede.
     #[test]
     fn la_data_in_formato_italiano_produce_il_countdown() {
-        let mut stato = StatoApp::nuovo();
-        stato.config.esami.clear();
+        let mut stato = stato_pulito();
         let oggi = chrono::Local::now().date_naive();
         stato.config.esami.insert(
             "storia romana".into(),
@@ -260,9 +357,8 @@ mod test_appelli {
     fn il_riquadro_appelli_non_sfonda_a_finestra_stretta() {
         let ctx = egui::Context::default();
         let (mittente, _canale) = std::sync::mpsc::channel();
-        let mut stato = StatoApp::nuovo();
+        let mut stato = stato_pulito();
         let mut audio = crate::audio::MotoreAudio::nuovo();
-        stato.config.esami.clear();
         stato.config.esami.insert(
             "Letteratura italiana".into(),
             crate::config::InfoEsame {
@@ -309,9 +405,8 @@ mod test_appelli {
     fn l_overlay_mostra_il_conto_dell_esame_che_stai_studiando() {
         let ctx = egui::Context::default();
         let (mittente, _canale) = std::sync::mpsc::channel();
-        let mut stato = StatoApp::nuovo();
+        let mut stato = stato_pulito();
         let mut audio = crate::audio::MotoreAudio::nuovo();
-        stato.config.esami.clear();
         let oggi = chrono::Local::now().date_naive();
         // "Vicino" scade prima, ma si studia "Quello che studio".
         stato.config.esami.insert(
@@ -373,8 +468,7 @@ mod test_appelli {
     #[test]
     fn il_riquadro_appelli_permette_di_scegliere_lesame() {
         let ctx = egui::Context::default();
-        let mut stato = StatoApp::nuovo();
-        stato.config.esami.clear();
+        let mut stato = stato_pulito();
         stato.collezioni = vec![
             crate::zotero::Collezione {
                 id: 1,
@@ -439,7 +533,7 @@ mod test_appelli {
 
 #[cfg(test)]
 mod test_notebooklm {
-    use crate::state::StatoApp;
+    use super::stato_pulito;
     use eframe::egui;
 
     /// Il pannello "Chiedi a NotebookLM" lavora sull'esame che riceve e non
@@ -447,8 +541,7 @@ mod test_notebooklm {
     #[test]
     fn il_pannello_chiedi_funziona_senza_zotero() {
         let ctx = egui::Context::default();
-        let mut stato = StatoApp::nuovo();
-        stato.config.esami.clear();
+        let mut stato = stato_pulito();
         stato.config.esami.insert(
             "Storia romana".into(),
             crate::config::InfoEsame {
@@ -490,8 +583,7 @@ mod test_notebooklm {
     #[test]
     fn la_scheda_esame_tiene_insieme_zotero_e_notebooklm() {
         let ctx = egui::Context::default();
-        let mut stato = StatoApp::nuovo();
-        stato.config.esami.clear();
+        let mut stato = stato_pulito();
         stato.config.esami.insert(
             "Storia romana".into(),
             crate::config::InfoEsame {
@@ -537,8 +629,7 @@ mod test_notebooklm {
     #[test]
     fn senza_esami_la_scheda_spiega_cosa_manca() {
         let ctx = egui::Context::default();
-        let mut stato = StatoApp::nuovo();
-        stato.config.esami.clear();
+        let mut stato = stato_pulito();
         stato.collezioni.clear();
 
         let output = ctx.run(
@@ -574,7 +665,7 @@ mod test_notebooklm {
 
 #[cfg(test)]
 mod test_incasso {
-    use crate::state::StatoApp;
+    use super::stato_pulito;
     use eframe::egui;
 
     /// Il riquadro di Zotero deve esserci e offrire l'aggancio: e' il modo
@@ -582,8 +673,7 @@ mod test_incasso {
     #[test]
     fn il_riquadro_zotero_offre_l_aggancio() {
         let ctx = egui::Context::default();
-        let mut stato = StatoApp::nuovo();
-        stato.config.esami.clear();
+        let mut stato = stato_pulito();
         stato.config.esami.insert(
             "Storia romana".into(),
             crate::config::InfoEsame::default(),
@@ -624,7 +714,7 @@ mod test_incasso {
 
 #[cfg(test)]
 mod test_due_colonne {
-    use crate::state::StatoApp;
+    use super::stato_pulito;
     use eframe::egui;
 
     /// A finestra larga il setup deve mostrare Zotero e NotebookLM
@@ -633,8 +723,7 @@ mod test_due_colonne {
     fn a_finestra_larga_zotero_e_notebooklm_stanno_affiancati() {
         let ctx = egui::Context::default();
         let (mittente, _canale) = std::sync::mpsc::channel();
-        let mut stato = StatoApp::nuovo();
-        stato.config.esami.clear();
+        let mut stato = stato_pulito();
         stato.config.esami.insert(
             "Storia romana".into(),
             crate::config::InfoEsame {
@@ -679,7 +768,7 @@ mod test_due_colonne {
 
 #[cfg(test)]
 mod test_link {
-    use crate::state::StatoApp;
+    use super::stato_pulito;
     use crate::zotero::Collezione;
     use eframe::egui;
 
@@ -688,7 +777,7 @@ mod test_link {
     #[test]
     fn il_campo_del_link_mantiene_il_testo() {
         let ctx = egui::Context::default();
-        let mut stato = StatoApp::nuovo();
+        let mut stato = stato_pulito();
         stato.collezioni = vec![Collezione {
             id: 1,
             nome: "Storia romana".to_string(),
@@ -719,14 +808,14 @@ mod test_link {
 
 #[cfg(test)]
 mod test_materiali {
-    use crate::state::StatoApp;
+    use super::stato_pulito;
     use crate::zotero::Collezione;
     use eframe::egui;
 
     #[test]
     fn il_flusso_materiali_unisce_azioni_zotero_e_notebooklm() {
         let ctx = egui::Context::default();
-        let mut stato = StatoApp::nuovo();
+        let mut stato = stato_pulito();
         stato.collezioni = vec![Collezione {
             id: 1,
             nome: "Storia romana".to_string(),
@@ -780,14 +869,14 @@ mod test_materiali {
 
 #[cfg(test)]
 mod test_anteprima_notebooklm {
-    use crate::state::StatoApp;
+    use super::stato_pulito;
     use crate::zotero::Collezione;
     use eframe::egui;
 
     #[test]
     fn anteprima_rimane_visibile_nei_frame_successivi_finche_non_si_chiude() {
         let ctx = egui::Context::default();
-        let mut stato = StatoApp::nuovo();
+        let mut stato = stato_pulito();
         stato.collezioni = vec![Collezione {
             id: 1,
             nome: "Storia romana".to_string(),
@@ -800,7 +889,7 @@ mod test_anteprima_notebooklm {
             "Riepilogo persistente di prova".to_string(),
         ));
 
-        let frame_testi = |stato: &mut StatoApp| {
+        let frame_testi = |stato: &mut crate::state::StatoApp| {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,

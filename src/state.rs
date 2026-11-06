@@ -116,11 +116,11 @@ pub struct StatoApp {
     /// Conserva l'handle per poterla staccare e ripristinare: una finestra
     /// agganciata che resta orfana sparisce dallo schermo.
     pub zotero_incassato: Option<isize>,
-    /// Scadenza dell'attesa della finestra di Zotero.
+    /// Attesa della finestra di Zotero: quanti tentativi e quando riprovare.
     ///
-    /// L'attesa non blocca: si prova a ogni frame finche' la finestra non
-    /// compare, e intanto l'interfaccia resta viva.
-    pub attesa_zotero: Option<Instant>,
+    /// La finestra viene cercata ogni 250 ms: cercarla a ogni frame
+    /// costerebbe un elenco dei processi sessanta volte al secondo.
+    pub attesa_zotero: Option<(u8, Instant)>,
     /// Riquadro dove disegnare Zotero, in punti egui.
     pub area_zotero: Option<egui::Rect>,
     /// Pagina di NotebookLM incorporata, se aperta.

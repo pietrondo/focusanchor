@@ -139,15 +139,25 @@ pub fn scheda(
 }
 
 /// Piccolo badge colorato, per valori brevi accanto a un'etichetta.
+///
+/// La larghezza si misura prima di disegnare: dentro una riga che va a
+/// capo, un `Frame` prende tutto lo spazio rimasto, il testo si spezza in
+/// verticale e la riga sfonda il bordo destro invece di mandare il badge
+/// alla riga dopo.
 pub fn badge(ui: &mut egui::Ui, testo: &str, colore: egui::Color32) {
-    egui::Frame::none()
-        .fill(colore.gamma_multiply(0.18))
-        .stroke(egui::Stroke::new(1.0, colore.gamma_multiply(0.55)))
-        .rounding(egui::Rounding::same(20.0))
-        .inner_margin(egui::Margin::symmetric(9.0, 3.0))
-        .show(ui, |ui| {
-            ui.label(egui::RichText::new(testo).size(13.0).strong().color(colore));
-        });
+    let galley = ui
+        .painter()
+        .layout_no_wrap(testo.to_owned(), egui::FontId::proportional(13.0), colore);
+    let dimensione = galley.size() + egui::vec2(18.0, 6.0);
+    let (rettangolo, _) = ui.allocate_exact_size(dimensione, egui::Sense::hover());
+    let pittore = ui.painter();
+    pittore.rect(
+        rettangolo,
+        20.0,
+        colore.gamma_multiply(0.18),
+        egui::Stroke::new(1.0, colore.gamma_multiply(0.55)),
+    );
+    pittore.galley(rettangolo.min + egui::vec2(9.0, 3.0), galley, colore);
 }
 
 /// Barra dei punti XP, del grado e dell'avanzamento verso il grado successivo.

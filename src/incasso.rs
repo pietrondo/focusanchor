@@ -61,25 +61,37 @@ unsafe extern "system" fn cerca_processo_callback(hwnd: HWND, lparam: LPARAM) ->
 /// che finisce con " - zotero" nel titolo non e' Zotero, e agganciarla
 /// dentro la nostra finestra la farebbe sparire dallo schermo.
 pub fn processo_zotero() -> Option<u32> {
+    processo_per_nome("zotero.exe")
+}
+
+/// Il processo con quel nome di eseguibile, se e' aperto.
+fn processo_per_nome(nome_cercato: &str) -> Option<u32> {
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
-        let _ = CloseHandle(snapshot);
         let mut voce = PROCESSENTRY32W {
             dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
             ..Default::default()
         };
-        if Process32FirstW(snapshot, &mut voce).is_err() {
-            return None;
-        }
-        loop {
-            let nome = String::from_utf16_lossy(&voce.szExeFile);
-            if nome.trim_end_matches('\0').eq_ignore_ascii_case("zotero.exe") {
-                return Some(voce.th32ProcessID);
+        // L'handle va chiuso DOPO l'enumerazione: su un handle gia' chiuso
+        // `Process32FirstW` fallisce e non si trova nessun processo.
+        let trovato = if Process32FirstW(snapshot, &mut voce).is_err() {
+            None
+        } else {
+            loop {
+                let nome = String::from_utf16_lossy(&voce.szExeFile);
+                if nome
+                    .trim_end_matches('\0')
+                    .eq_ignore_ascii_case(nome_cercato)
+                {
+                    break Some(voce.th32ProcessID);
+                }
+                if Process32NextW(snapshot, &mut voce).is_err() {
+                    break None;
+                }
             }
-            if Process32NextW(snapshot, &mut voce).is_err() {
-                return None;
-            }
-        }
+        };
+        let _ = CloseHandle(snapshot);
+        trovato
     }
 }
 
@@ -155,4 +167,24 @@ pub fn avvia_zotero() -> Result<(), String> {
         }
     }
     Err("Non trovo Zotero in C:\\Program Files. Aprilo a mano e riprova.".into())
+}
+
+#[cfg(test)]
+mod test {
+    use super::processo_per_nome;
+
+    /// L'enumerazione dei processi deve trovare il processo del test
+    /// stesso: chiudere l'handle prima di `Process32FirstW` la faceva
+    /// fallire sempre, e nessun processo veniva trovato.
+    #[test]
+    fn l_enumerazione_trova_il_processo_corrente() {
+        let nome = std::env::current_exe()
+            .expect("percorso dell'eseguibile")
+            .file_name()
+            .expect("nome dell'eseguibile")
+            .to_string_lossy()
+            .into_owned();
+
+        assert_eq!(processo_per_nome(&nome), Some(std::process::id()));
+    }
 }

@@ -168,6 +168,25 @@ pub fn cartella_programma() -> PathBuf {
 /// Dentro `%LOCALAPPDATA%\FocusAnchor`: li' si puo' sempre scrivere, e i
 /// dati non spariscono quando il programma viene spostato o reinstallato.
 pub fn cartella_dati() -> PathBuf {
+    // Nei test i dati vanno in una cartella temporanea: la suite scrive
+    // config e storico, e non deve toccare quelli veri dell'utente.
+    #[cfg(test)]
+    {
+        use std::sync::Once;
+        static PULIZIA: Once = Once::new();
+        let cartella = std::env::temp_dir().join(format!(
+            "focusanchor-test-{}",
+            std::process::id()
+        ));
+        // Al primo uso si riparte da zero: le prove non devono vedersi
+        // i file lasciati da un'esecuzione precedente.
+        PULIZIA.call_once(|| {
+            let _ = fs::remove_dir_all(&cartella);
+        });
+        let _ = fs::create_dir_all(&cartella);
+        return cartella;
+    }
+    #[cfg(not(test))]
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .map(|base| base.join("FocusAnchor"))
