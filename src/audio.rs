@@ -13,7 +13,7 @@ use std::time::Duration;
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 
 use crate::suono::{Beep, Binaurale40, RumoreMarrone};
-use crate::suono_file::{SuonoFile, FILE_PIOGGIA};
+use crate::suono_file::SuonoFile;
 use crate::suono_pioggia::Pioggia;
 
 /// Modalita' di audio di sottofondo scelta dall'utente.
@@ -63,21 +63,6 @@ impl ModalitaAudio {
             ModalitaAudio::PioggiaDelicata => ModalitaAudio::Binaurale40,
             ModalitaAudio::Binaurale40 => ModalitaAudio::Binaurale4,
             ModalitaAudio::Binaurale4 => ModalitaAudio::Spenta,
-        }
-    }
-
-    /// Modalita' precedente nel ciclo del selettore.
-    #[allow(dead_code)]
-    pub fn precedente(&self) -> Self {
-        match self {
-            ModalitaAudio::Spenta => ModalitaAudio::Binaurale4,
-            ModalitaAudio::Binaurale4 => ModalitaAudio::Binaurale40,
-            ModalitaAudio::Pioggia => ModalitaAudio::RumoreMarrone,
-            ModalitaAudio::PioggiaFile => ModalitaAudio::Pioggia,
-            ModalitaAudio::PioggiaCitta => ModalitaAudio::PioggiaFile,
-            ModalitaAudio::PioggiaDelicata => ModalitaAudio::PioggiaCitta,
-            ModalitaAudio::RumoreMarrone => ModalitaAudio::Spenta,
-            ModalitaAudio::Binaurale40 => ModalitaAudio::PioggiaDelicata,
         }
     }
 
@@ -255,9 +240,9 @@ impl MotoreAudio {
             ModalitaAudio::Binaurale40 => sink.append(Binaurale40::nuovo()),
             ModalitaAudio::Binaurale4 => sink.append(Binaurale40::nuovo_con_differenza(4.0)),
             ModalitaAudio::Pioggia => sink.append(Pioggia::nuovo()),
-            ModalitaAudio::PioggiaFile => sink.append(SuonoFile::apri(
-                crate::config::cartella_dati().join(FILE_PIOGGIA),
-            )?),
+            ModalitaAudio::PioggiaFile => {
+                sink.append(SuonoFile::apri(crate::suono_file::percorso_file())?)
+            }
             ModalitaAudio::PioggiaCitta => sink.append(SuonoFile::incorporato(include_bytes!(
                 "../assets/audio/rain-city.mp3"
             ))?),
@@ -365,8 +350,8 @@ mod test {
             ModalitaAudio::PioggiaFile
         );
         assert_eq!(
-            ModalitaAudio::PioggiaFile.precedente(),
-            ModalitaAudio::Pioggia
+            ModalitaAudio::PioggiaFile.successiva(),
+            ModalitaAudio::PioggiaCitta
         );
     }
 }

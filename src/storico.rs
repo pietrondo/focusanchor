@@ -77,23 +77,15 @@ pub fn carica() -> Vec<SessioneRegistrata> {
     serde_json::from_str(&testo).unwrap_or_default()
 }
 
-/// Aggiunge una sessione allo storico e lo salva.
-pub fn registra(sessione: SessioneRegistrata) {
-    let mut elenco = carica();
-    elenco.push(sessione);
-    // Si tengono solo le piu' recenti.
-    if elenco.len() > MASSIMO_SESSIONI {
-        let eccesso = elenco.len() - MASSIMO_SESSIONI;
-        elenco.drain(0..eccesso);
-    }
-    salva(&elenco);
-}
-
-/// Scrive lo storico su disco.
-fn salva(elenco: &[SessioneRegistrata]) {
-    if let Ok(json) = serde_json::to_string_pretty(elenco) {
-        let _ = fs::write(percorso_storico(), json);
-    }
+/// Salva l'elenco delle sessioni su disco.
+///
+/// Scrittura atomica: una scrittura interrotta a meta' non deve far
+/// perdere tutto lo storico.
+pub fn salva(elenco: &[SessioneRegistrata]) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(elenco)
+        .map_err(|e| format!("Storico non serializzabile: {e}"))?;
+    crate::config::scrivi_atomico(&percorso_storico(), json.as_bytes())
+        .map_err(|e| format!("Non riesco a salvare lo storico: {e}"))
 }
 
 /// Calcola il riepilogo dello storico.

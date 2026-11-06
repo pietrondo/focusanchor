@@ -119,6 +119,9 @@ impl StatoApp {
         let parole = crate::config::righe_alla_lista(&self.testo_parole);
         // La guardia deve sapere quali testi appartengono all'esame scelto.
         self.guardia = Some(Guardia::avvia(parole, self.testi_scelti.clone(), mittente.clone()));
+        // Il piano di studio vale per la sessione che comincia: si calcola
+        // qui e non a ogni frame.
+        self.ricalcola_piano();
     }
 
     /// Termina la sessione, ferma il Livello 2 e ripristina il file hosts.
@@ -130,15 +133,33 @@ impl StatoApp {
                 let blocchi = self.task.completati.saturating_sub(s.blocchi_inizio);
                 if let Some(record) = self.sessione_da_registrare(minuti, blocchi) {
                     self.ultimo_riepilogo = Some(record.clone());
-                    crate::storico::registra(record);
+                    self.registra_in_storico(record);
                 }
             }
         }
         if let Some(mut guardia) = self.guardia.take() {
             guardia.ferma();
         }
-        crate::blocker::ripristina_hosts();
-        crate::blocker::flush_dns();
+    }
+
+    /// Aggiunge la sessione allo storico e lo salva.
+    ///
+    /// Anche in memoria: il riquadro Storico mostrava il totale di prima,
+    /// come se la sessione appena finita non fosse mai esistita.
+    fn registra_in_storico(&mut self, record: crate::storico::SessioneRegistrata) {
+        self.storico.push(record);
+        let eccesso = self
+            .storico
+            .len()
+            .saturating_sub(crate::storico::MASSIMO_SESSIONI);
+        if eccesso > 0 {
+            self.storico.drain(0..eccesso);
+        }
+        if let Err(e) = crate::storico::salva(&self.storico) {
+            self.avviso = Some(e);
+        }
+        self.secondi_documenti = crate::appelli::secondi_per_documento(&self.storico);
+        self.ricalcola_piano();
     }
 
     /// Costruisce la riga di storico di una sessione appena conclusa.

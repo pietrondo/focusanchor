@@ -53,8 +53,6 @@ pub struct Carta {
     pub facilita: f64,
     /// Ripassi andati bene di fila.
     pub serie: u32,
-    /// Volte in cui non la sapevi.
-    pub errori: u32,
 }
 
 /// Tutto quello che l'app sa di un esame, oltre ai tempi.
@@ -82,10 +80,12 @@ pub fn carica(esame: &str) -> MemoriaEsame {
 }
 
 /// Scrive la memoria di un esame su disco.
+///
+/// Scrittura atomica: le carte non si perdono a meta' scrittura.
 pub fn salva(esame: &str, memoria: &MemoriaEsame) -> Result<(), String> {
     let json = serde_json::to_string_pretty(memoria)
         .map_err(|e| format!("Memoria non serializzabile: {e}"))?;
-    fs::write(percorso(esame), json)
+    crate::config::scrivi_atomico(&percorso(esame), json.as_bytes())
         .map_err(|e| format!("Non riesco a salvare le carte: {e}"))
 }
 
@@ -167,7 +167,6 @@ pub fn aggiungi(esame: &str, domanda: &str, risposta: &str) -> Result<(), String
         intervallo: 0,
         facilita: 2.5,
         serie: 0,
-        errori: 0,
     });
     salva(esame, &memoria)
 }
@@ -177,7 +176,6 @@ pub fn ripassa(carta: &mut Carta, giudizio: Giudizio, giorno: NaiveDate) {
     match giudizio {
         Giudizio::Male => {
             carta.serie = 0;
-            carta.errori += 1;
             carta.intervallo = 0;
             carta.facilita = (carta.facilita - 0.2).max(1.3);
         }
@@ -221,7 +219,6 @@ mod test {
             intervallo: 0,
             facilita: 2.5,
             serie: 0,
-            errori: 0,
         }
     }
 
@@ -255,7 +252,6 @@ mod test {
         assert_eq!(carta.intervallo, 0);
         assert_eq!(carta.prossima, "2026-11-01");
         assert_eq!(carta.serie, 0);
-        assert_eq!(carta.errori, 1);
         // La facilita' scende ma non sotto il minimo.
         assert!(carta.facilita < 2.5 && carta.facilita >= 1.3);
     }

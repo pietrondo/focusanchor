@@ -325,6 +325,15 @@ var FocusAnchor = {
 		}
 	},
 
+	/** Scrive un file in modo atomico: prima su un temporaneo, poi rinomina. */
+	async scriviFile(percorso, testo) {
+		// Il lettore (l'app) non deve vedere il file a meta': scrive su un
+		// temporaneo e rinomina, che e' atomico.
+		const temporaneo = percorso + ".tmp";
+		await IOUtils.writeUTF8(temporaneo, testo);
+		await IOUtils.move(temporaneo, percorso);
+	},
+
 	/** Scrive il comando e, se serve, avvia l'app. */
 	async invia(comando, esame) {
 		try {
@@ -334,7 +343,7 @@ var FocusAnchor = {
 				comando,
 				esame: esame || "",
 			};
-			await Zotero.File.putContentsAsync(
+			await this.scriviFile(
 				PathUtils.join(Zotero.DataDirectory.dir, "focusanchor_comando.json"),
 				JSON.stringify(dati)
 			);
@@ -360,8 +369,7 @@ var FocusAnchor = {
 
 		// L'app lascia qui il proprio percorso al primo avvio: cosi' il
 		// plugin non deve sapere dove sta il file.
-		let eseguibile =
-			"C:\\Users\\pietr\\progetti\\anti-distrazione\\target\\release\\focusanchor.exe";
+		let eseguibile = "";
 		try {
 			const salvato = await Zotero.File.getContentsAsync(
 				PathUtils.join(Zotero.DataDirectory.dir, "focusanchor_exe.txt")
@@ -370,6 +378,14 @@ var FocusAnchor = {
 				eseguibile = salvato.trim();
 			}
 		} catch (e) {}
+
+		if (!eseguibile) {
+			// Senza il percorso salvato non c'e' niente da avviare: un
+			// percorso scritto qui dentro funzionerebbe solo su una
+			// macchina.
+			this.erroreAvvio = "Apri FocusAnchor almeno una volta: poi lo posso avviare da qui.";
+			return;
+		}
 
 		try {
 			await Zotero.Utilities.Internal.exec(eseguibile, []);
@@ -447,7 +463,7 @@ var FocusAnchor = {
 				Zotero.DataDirectory.dir,
 				"focusanchor_attivo.json"
 			);
-			await Zotero.File.putContentsAsync(percorso, testo);
+			await this.scriviFile(percorso, testo);
 		} catch (e) {
 			Zotero.debug("FocusAnchor: scrittura fallita: " + e);
 		}

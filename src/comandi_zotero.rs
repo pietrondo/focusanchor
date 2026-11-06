@@ -21,6 +21,12 @@ impl crate::AppFocus {
             self.stato.sincronizza_memoria();
             comando::battito(&self.stato);
         }
+        // Il comando si legge ogni 250 ms: leggerlo a ogni frame aprirebbe
+        // il file sessanta volte al secondo, anche quando non esiste.
+        if self.ultima_lettura_comando.elapsed() < std::time::Duration::from_millis(250) {
+            return;
+        }
+        self.ultima_lettura_comando = std::time::Instant::now();
         let Some(comando) = comando::leggi(&self.stato.config.cartella_zotero) else {
             return;
         };
@@ -29,7 +35,7 @@ impl crate::AppFocus {
         }
         self.ultimo_comando = Some(comando.id.clone());
         self.stato.ultimo_comando = comando.comando.clone();
-        comando::consuma(&self.stato.config.cartella_zotero);
+        comando::consuma(&self.stato.config.cartella_zotero, &comando.id);
         self.esegui_comando(comando, ctx);
     }
 

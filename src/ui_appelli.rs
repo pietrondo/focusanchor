@@ -28,10 +28,19 @@ pub fn sezione_appelli(ui: &mut egui::Ui, stato: &mut StatoApp) {
         return;
     }
 
-    let secondi = appelli::secondi_per_documento(&stato.storico);
-    for appello in &elenco {
-        let piano = appelli::piano(&appello.nome, &secondi, &stato.collezioni, appello.giorni);
-        let ritmo = appelli::ritmo_esame(&stato.storico, &appello.nome);
+    // I secondi per documento sono gia' calcolati: rifarli a ogni frame
+    // clona il titolo di ogni documento di ogni sessione.
+    let secondi = &stato.secondi_documenti;
+    let calcolati: Vec<(Piano, u32)> = elenco
+        .iter()
+        .map(|appello| {
+            (
+                appelli::piano(&appello.nome, secondi, &stato.collezioni, appello.giorni),
+                appelli::ritmo_esame(&stato.storico, &appello.nome),
+            )
+        })
+        .collect();
+    for (appello, (piano, ritmo)) in elenco.iter().zip(calcolati) {
         riga_appello(ui, stato, appello, &piano, ritmo);
     }
 }

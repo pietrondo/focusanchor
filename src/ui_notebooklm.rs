@@ -581,10 +581,16 @@ fn copia_domanda(stato: &mut StatoApp, esame: &str) {
 
 /// Mostra la risposta arrivata, con il pulsante per salvarla come carta.
 fn mostra_risposta(ui: &mut egui::Ui, stato: &mut StatoApp) {
-    let Some(testo) = stato.chiedi.risposta.clone() else {
+    let Some(esito) = stato.chiedi.esito.clone() else {
         return;
     };
     let esame = stato.chiedi.esame.clone();
+    // L'errore non e' una risposta: si mostra in giallo e non diventa una
+    // carta di ripasso.
+    let (testo, colore, salvabile) = match esito {
+        crate::notebooklm::Esito::Risposta(testo) => (testo, crate::ui::ACCENTO, true),
+        crate::notebooklm::Esito::Errore(messaggio) => (messaggio, crate::ui::GIALLO, false),
+    };
 
     egui::Frame::none()
         .fill(crate::ui::SFONDO)
@@ -597,7 +603,7 @@ fn mostra_risposta(ui: &mut egui::Ui, stato: &mut StatoApp) {
                     egui::RichText::new("💡 Risposta di NotebookLM")
                         .size(13.0)
                         .strong()
-                        .color(ACCENTO),
+                        .color(colore),
                 );
                 if !esame.is_empty() {
                     badge(ui, &crate::ui::accorcia(&esame, 24), VERDE);
@@ -612,7 +618,7 @@ fn mostra_risposta(ui: &mut egui::Ui, stato: &mut StatoApp) {
                     ui.label(egui::RichText::new(&testo).size(14.0));
                 });
             ui.horizontal_wrapped(|ui| {
-                if ui.button("💾 Salva come carta di ripasso").clicked() {
+                if salvabile && ui.button("💾 Salva come carta di ripasso").clicked() {
                     salva_carta(stato, &esame, &testo);
                 }
                 if ui.button("📋 Copia").clicked() {

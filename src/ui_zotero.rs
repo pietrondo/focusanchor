@@ -10,6 +10,9 @@ use eframe::egui;
 use crate::state::{StatoApp, MAX_TESTI};
 use crate::ui::{badge, ARANCIO, TENUE, VERDE, VIOLA};
 
+/// Quanto si aspetta la finestra di Zotero prima di rinunciare.
+const ATTESA_ZOTERO: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// Elenco degli esami su cui lavorare.
 ///
 /// Prima le schede salvate (gli esami veri); se non ce n'e' ancora nessuna
@@ -184,26 +187,43 @@ pub fn riquadro_zotero(ui: &mut egui::Ui, stato: &mut StatoApp, altezza: f32) {
 fn aggancia_zotero(stato: &mut StatoApp) {
     // Zotero puo' essere chiuso: si prova ad aprirlo e si aspetta che la
     // finestra esista davvero, invece di fallire subito.
-    let mut finestra = crate::incasso::finestra_zotero();
-    if finestra.is_none() {
+    let Some(finestra) = crate::incasso::finestra_zotero() else {
+        // L'attesa non blocca la finestra: si prova a ogni frame finche'
+        // non compare, e intanto l'interfaccia resta viva.
         if let Err(e) = crate::incasso::avvia_zotero() {
             stato.avviso = Some(e);
             return;
         }
-        for _ in 0..30 {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            finestra = crate::incasso::finestra_zotero();
-            if finestra.is_some() {
-                break;
-            }
-        }
-    }
-    let Some(finestra) = finestra else {
-        stato.avviso = Some(
-            "Non trovo la finestra di Zotero. Aprilo e riprova.".into(),
-        );
+        stato.attesa_zotero = Some(std::time::Instant::now() + ATTESA_ZOTERO);
+        stato.aggiungi_notifica("Zotero si sta avviando: l'aggancio avviene da solo.");
         return;
     };
+    aggancia_ora(stato, finestra);
+}
+
+/// Riprova l'aggancio di Zotero, senza bloccare l'interfaccia.
+///
+/// La finestra di Zotero puo' mettere qualche secondo ad arrivare: si
+/// prova a ogni frame e si smette dopo `ATTESA_ZOTERO`.
+pub fn continua_aggancio(stato: &mut StatoApp) {
+    let Some(scadenza) = stato.attesa_zotero else {
+        return;
+    };
+    if let Some(finestra) = crate::incasso::finestra_zotero() {
+        stato.attesa_zotero = None;
+        aggancia_ora(stato, finestra);
+        return;
+    }
+    if std::time::Instant::now() >= scadenza {
+        stato.attesa_zotero = None;
+        stato.avviso = Some(
+            "Zotero non compare: aprilo a mano e premi di nuovo «Aggancia Zotero qui».".into(),
+        );
+    }
+}
+
+/// Aggancia la finestra di Zotero a quella di FocusAnchor.
+fn aggancia_ora(stato: &mut StatoApp, finestra: windows::Win32::Foundation::HWND) {
     let Some(ospite) = crate::incasso::finestra_app() else {
         stato.avviso = Some("Non trovo la finestra di FocusAnchor.".into());
         return;

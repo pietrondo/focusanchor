@@ -90,7 +90,7 @@ fn intestazione(ui: &mut egui::Ui, stato: &StatoApp) {
     if let Some((giorni, esami)) = crate::appelli::conto_di(&stato.config, &esame) {
         let testo = crate::appelli::testo_conto(giorni, &esami);
         ui.label(egui::RichText::new(testo).size(13.0).color(ARANCIO));
-        piano_di_studio(ui, stato, &esame, giorni);
+        piano_di_studio(ui, stato);
     }
 }
 
@@ -98,16 +98,18 @@ fn intestazione(ui: &mut egui::Ui, stato: &StatoApp) {
 ///
 /// E' la versione che serve durante lo studio: dice se il ritmo di oggi e'
 /// sufficiente o se stai andando indietro.
-fn piano_di_studio(ui: &mut egui::Ui, stato: &StatoApp, esame: &str, giorni: i64) {
+///
+/// I numeri sono gia' calcolati: rifarli a ogni frame clona il titolo di
+/// ogni documento di ogni sessione, e lo storico cresce.
+fn piano_di_studio(ui: &mut egui::Ui, stato: &StatoApp) {
+    let esame = stato.nome_esame();
     if esame.is_empty() || esame == "Senza esame" {
         return;
     }
-    let secondi = crate::appelli::secondi_per_documento(&stato.storico);
-    let piano = crate::appelli::piano(esame, &secondi, &stato.collezioni, Some(giorni));
-    let ritmo = crate::appelli::ritmo_esame(&stato.storico, esame);
-    let Some(target) = piano.minuti_al_giorno else {
+    let Some(target) = stato.piano_minuti_al_giorno else {
         return;
     };
+    let ritmo = stato.piano_ritmo;
     let (testo, colore) = if ritmo >= target {
         (
             format!("Ritmo ok: {ritmo} min/giorno (ne servono {target})."),

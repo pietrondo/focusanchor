@@ -39,7 +39,6 @@ pub fn genera(
             intervallo: 0,
             facilita: 2.5,
             serie: 0,
-            errori: 0,
         });
         aggiunte += 1;
     }

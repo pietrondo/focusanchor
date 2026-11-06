@@ -80,6 +80,8 @@ pub(crate) struct AppFocus {
     pub(crate) overlay_attivo: bool,
     /// Ultimo battito scritto per l'estensione Zotero.
     pub(crate) ultimo_battito: std::time::Instant,
+    /// Ultima lettura del file di comando del plugin.
+    pub(crate) ultima_lettura_comando: std::time::Instant,
     /// Ultimo comando eseguito, per non ripeterlo.
     pub(crate) ultimo_comando: Option<String>,
 }
@@ -161,6 +163,7 @@ impl AppFocus {
             mittente,
             overlay_attivo: false,
             ultimo_battito: std::time::Instant::now(),
+            ultima_lettura_comando: std::time::Instant::now(),
             ultimo_comando: None,
         }
     }
@@ -208,6 +211,11 @@ impl AppFocus {
 
     /// Controlla se e' ora di porre una domanda a tradimento.
     fn controlla_sfida(&mut self) {
+        // Durante la pausa non si interrompe: la pausa e' l'unica via che
+        // l'utente ha di prendersi una pausa vera.
+        if self.stato.pausa_residua().is_some() {
+            return;
+        }
         if !self.stato.anti_sonno.domanda_da_porre() {
             return;
         }
@@ -298,6 +306,9 @@ impl eframe::App for AppFocus {
         self.stato.campiona_tempo();
         self.stato.aggiorna_interleaving(&mut self.audio);
         self.stato.aggiorna_voce(&mut self.audio);
+        // Lo snapshot di Zotero arriva da un thread: quando c'e', i
+        // materiali vengono pubblicati.
+        ui_esami::aggiorna_snapshot(&mut self.stato);
         self.controlla_sfida();
 
         if self.stato.in_sessione() {
@@ -328,17 +339,13 @@ impl eframe::App for AppFocus {
 }
 
 fn main() {
-    // Fail-safe: un crash precedente puo' aver lasciato il file `hosts` sporco.
-    blocker::ripristina_hosts();
-    blocker::flush_dns();
+    // I dati delle versioni vecchie erano accanto all'eseguibile: ora
+    // stanno nella cartella dell'utente, e vanno portati con se'.
+    config::migra_dati_vecchi();
 
-    // Fail-safe: durante un panic il file `hosts` deve tornare pulito comunque.
-    let hook_precedente = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        blocker::ripristina_hosts();
-        blocker::flush_dns();
-        hook_precedente(info);
-    }));
+    // Chi ha usato le versioni vecchie puo' avere ancora il blocco dei
+    // domini nel file `hosts`: si pulisce una volta sola, all'avvio.
+    blocker::ripristina_hosts();
 
     let opzioni = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

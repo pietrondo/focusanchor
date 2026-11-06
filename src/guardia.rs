@@ -3,7 +3,8 @@
 //! Un thread dedicato controlla ogni 800 ms il titolo della finestra in primo
 //! piano e fa due cose:
 //!
-//! - se il titolo contiene una parola vietata, minimizza la finestra;
+//! - se il titolo contiene una parola vietata, avvisa: niente viene chiuso,
+//!   l'app dice solo a voce quale era l'obiettivo;
 //! - se e' una scheda di Zotero con un PDF di un ALTRO esame, avvisa: studiare
 //!   un corso diverso e' un cambio di contesto che costa attenzione.
 
@@ -30,6 +31,21 @@ const INTERVALLO_SONNO: Duration = Duration::from_millis(50);
 /// lui stesso una distrazione.
 pub const COOLDOWN_CONTESTO: Duration = Duration::from_secs(15);
 
+/// Tempo minimo fra due avvisi di distrazione.
+///
+/// Una distrazione costa 25 XP: la stessa finestra non va penalizzata ogni
+/// 800 ms mentre resta in primo piano.
+pub const COOLDOWN_DISTRAZIONE: Duration = Duration::from_secs(30);
+
+/// Ultimi avvisi mandati, per non ripeterli.
+#[derive(Default)]
+struct Avvisi {
+    /// Ultima distrazione segnalata, con il titolo della finestra.
+    distrazione: Option<(String, Instant)>,
+    /// Ultimo avviso di cambio di contesto.
+    contesto: Option<Instant>,
+}
+
 /// Guardia attiva che sorveglia le finestre in primo piano.
 pub struct Guardia {
     /// Flag di arresto chiesto dalla GUI.
@@ -53,7 +69,7 @@ impl Guardia {
         let flag = Arc::clone(&ferma);
         let thread = thread::spawn(move || {
             let mut ultimo_controllo = Instant::now();
-            let mut ultimo_avviso: Option<Instant> = None;
+            let mut avvisi = Avvisi::default();
             loop {
                 thread::sleep(INTERVALLO_SONNO);
                 if flag.load(Ordering::Relaxed) {
@@ -63,7 +79,7 @@ impl Guardia {
                     continue;
                 }
                 ultimo_controllo = Instant::now();
-                controlla_una_volta(&parole, &testi_esame, &canale, &mut ultimo_avviso);
+                controlla_una_volta(&parole, &testi_esame, &canale, &mut avvisi);
             }
         });
         Self {
@@ -92,7 +108,7 @@ fn controlla_una_volta(
     parole: &[String],
     testi_esame: &[String],
     canale: &Sender<Segnale>,
-    ultimo_avviso: &mut Option<Instant>,
+    avvisi: &mut Avvisi,
 ) {
     // La finestra di FocusAnchor non deve mai essere minimizzata da se' stessa.
     if crate::blocker::finestra_è_di_focus_anchor() {
@@ -107,7 +123,20 @@ fn controlla_una_volta(
     //    Il blocco dei siti e' stato tolto su richiesta: l'app non deve
     //    minimizzare le finestre dell'utente, solo ricordargli l'obiettivo.
     if crate::blocker::titolo_vietato(&titolo, parole) {
-        let _ = canale.send(Segnale::Distrazione(titolo));
+        let adesso = Instant::now();
+        // La stessa finestra non viene penalizzata due volte: restare
+        // davanti a una scheda distratta non e' un'altra distrazione.
+        let ripetuta = avvisi
+            .distrazione
+            .as_ref()
+            .map(|(visto, istante)| {
+                *visto == titolo || adesso.duration_since(*istante) < COOLDOWN_DISTRAZIONE
+            })
+            .unwrap_or(false);
+        if !ripetuta {
+            avvisi.distrazione = Some((titolo.clone(), adesso));
+            let _ = canale.send(Segnale::Distrazione(titolo));
+        }
         return;
     }
 
@@ -121,13 +150,14 @@ fn controlla_una_volta(
         }
         // Rispetta il cooldown: dopo un avviso, aspetta prima del successivo.
         let adesso = Instant::now();
-        let troppobuono = ultimo_avviso
+        let troppobuono = avvisi
+            .contesto
             .map(|ultimo| adesso.duration_since(ultimo) < COOLDOWN_CONTESTO)
             .unwrap_or(false);
         if troppobuono {
             return;
         }
-        *ultimo_avviso = Some(adesso);
+        avvisi.contesto = Some(adesso);
         let _ = canale.send(Segnale::ContestoZotero(documento));
     }
 }

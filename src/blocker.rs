@@ -1,12 +1,12 @@
 //! Modulo di blocco anti-distrazione.
 //!
-//! Livello 1: modifica del file `hosts` di Windows con flush del DNS.
+//! Il blocco dei siti non fa piu' parte dell'app: resta solo la pulizia
+//! del file `hosts` per chi ha usato le versioni vecchie.
+//!
 //! Livello 2: guardia delle finestre attive tramite API Win32.
 
 use std::fs;
-use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
 
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowThreadProcessId,
@@ -38,17 +38,6 @@ pub fn percorso_hosts() -> PathBuf {
     PathBuf::from(HOSTS_PATH)
 }
 
-/// Esegue `ipconfig /flushdns` senza mostrare finestre.
-pub fn flush_dns() {
-    let _ = Command::new("ipconfig")
-        .arg("/flushdns")
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-}
-
 /// Rimuove dal file `hosts` un eventuale blocco lasciato da versioni
 /// precedenti di FocusAnchor.
 ///
@@ -57,7 +46,7 @@ pub fn flush_dns() {
 /// scritto nel file di sistema.
 ///
 /// Funzione sicura: non entra mai in panic, cosi' puo' essere chiamata
-/// anche dal panic hook di sicurezza.
+/// anche all'avvio.
 pub fn ripristina_hosts() {
     let percorso = percorso_hosts();
     let Ok(contenuto) = fs::read_to_string(&percorso) else {

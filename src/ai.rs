@@ -7,6 +7,7 @@
 //! La chiamata sta in un thread separato: puo' metterci dieci secondi e
 //! l'interfaccia non deve congelarsi.
 
+use std::io::Write;
 use std::os::windows::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -172,28 +173,51 @@ fn accorcia(testo: &str) -> String {
     }
 }
 
+/// Vero se il nome del modello e' solo il formato `provider/modello`.
+///
+/// Il nome va sulla riga di comando di `cmd`: se contenesse un `&` o una
+/// virgoletta, `cmd` lo prenderebbe per un altro comando.
+fn modello_sicuro(modello: &str) -> bool {
+    !modello.is_empty()
+        && modello
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.' | '#'))
+}
+
 /// Esegue `opencode run` e restituisce la risposta.
 ///
 /// Passa da `cmd /C` perche' OpenCode su Windows e' uno script `.cmd`: una
 /// `Command::new("opencode")` diretta non lo troverebbe.
+///
+/// Il prompt va da stdin e non sulla riga di comando: `cmd` riaparse la
+/// riga e un `&` o una virgoletta nel testo copiato da un PDF diventerebbero
+/// un comando.
 fn esegui(modello: &str, prompt: &str) -> Esito {
-    let uscita = Command::new("cmd")
-        .args([
-            "/C", "opencode", "run", "-m", modello, "--auto", prompt,
-        ])
+    if !modello_sicuro(modello) {
+        return Esito::Errore(format!("Nome del modello non valido: {modello}"));
+    }
+    let mut figlio = match Command::new("cmd")
+        .args(["/C", "opencode", "run", "-m", modello, "--auto"])
         .creation_flags(CREATE_NO_WINDOW)
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output();
-
-    let uscita = match uscita {
-        Ok(u) => u,
+        .spawn()
+    {
+        Ok(f) => f,
         Err(e) => {
             return Esito::Errore(format!(
                 "Non riesco ad avviare OpenCode: {e}. Controlla che `opencode` sia installato."
             ))
         }
+    };
+    if let Some(mut stdin) = figlio.stdin.take() {
+        let _ = stdin.write_all(prompt.as_bytes());
+    }
+
+    let uscita = match figlio.wait_with_output() {
+        Ok(u) => u,
+        Err(e) => return Esito::Errore(format!("OpenCode non ha risposto: {e}")),
     };
 
     let testo = String::from_utf8_lossy(&uscita.stdout);
@@ -300,6 +324,18 @@ mod test {
     fn i_codici_colore_vengono_tolti() {
         let uscita = "\u{1b}[31mrosso\u{1b}[0m normale";
         assert_eq!(ripulisci(uscita), "rosso normale");
+    }
+
+    /// Il nome del modello va sulla riga di comando di `cmd`: i caratteri
+    /// che `cmd` prende per un separatore non possono passare.
+    #[test]
+    fn il_nome_del_modello_deve_essere_sicuro() {
+        assert!(modello_sicuro("opencode-go/deepseek-v4.1-flash"));
+        assert!(modello_sicuro("anthropic/claude-sonnet-4#thinking"));
+        assert!(!modello_sicuro(""));
+        assert!(!modello_sicuro("modello & calc"));
+        assert!(!modello_sicuro("modello|calc"));
+        assert!(!modello_sicuro("modello\""));
     }
 
     /// Chiamata reale a OpenCode. Ignorata perche' richiede la CLI

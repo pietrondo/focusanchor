@@ -8,8 +8,7 @@ use crate::archivi;
 use crate::audio::{ModalitaAudio, MotoreAudio, Voce};
 use crate::audio_voce::VelocitaVoce;
 use crate::config::{
-    carica_configurazione, lista_alle_righe, righe_alla_lista, salva_configurazione,
-    Configurazione,
+    carica_configurazione, lista_alle_righe, righe_alla_lista, Configurazione,
 };
 use crate::guardia::Guardia;
 use crate::interleaving::Interleaving;
@@ -82,6 +81,12 @@ pub struct StatoApp {
     pub evidenziazioni: Vec<Evidenziazione>,
     /// Percorso dello snapshot del database Zotero.
     pub snapshot_zotero: Option<PathBuf>,
+    /// Snapshot Zotero in arrivo dal thread che lo prepara, con il lavoro
+    /// da fare quando arriva.
+    pub snapshot_in_arrivo: Option<(
+        std::sync::mpsc::Receiver<Result<PathBuf, String>>,
+        crate::ui_esami::LavoroZotero,
+    )>,
     /// Testo in modifica nel campo del link NotebookLM.
     ///
     /// Deve stare nello stato: un buffer locale verrebbe ricreato a ogni
@@ -111,6 +116,11 @@ pub struct StatoApp {
     /// Conserva l'handle per poterla staccare e ripristinare: una finestra
     /// agganciata che resta orfana sparisce dallo schermo.
     pub zotero_incassato: Option<isize>,
+    /// Scadenza dell'attesa della finestra di Zotero.
+    ///
+    /// L'attesa non blocca: si prova a ogni frame finche' la finestra non
+    /// compare, e intanto l'interfaccia resta viva.
+    pub attesa_zotero: Option<Instant>,
     /// Riquadro dove disegnare Zotero, in punti egui.
     pub area_zotero: Option<egui::Rect>,
     /// Pagina di NotebookLM incorporata, se aperta.
@@ -138,23 +148,31 @@ pub struct StatoApp {
     /// Deve stare nello stato: un buffer locale verrebbe ricreato a ogni
     /// frame e la data digitata sparirebbe a meta' digitazione.
     pub date_in_edizione: std::collections::BTreeMap<String, String>,
-    /// Editor di dominio vietati (una voce per riga).
-    pub testo_domini: String,
     /// Editor di parole chiave vietate (una voce per riga).
     pub testo_parole: String,
+    /// Secondi passati su ogni documento, raggruppati per esame.
+    ///
+    /// Si calcolano quando lo storico cambia, non a ogni frame: rifarli
+    /// clona il titolo di ogni documento di ogni sessione.
+    pub secondi_documenti: std::collections::BTreeMap<String, std::collections::BTreeMap<String, u32>>,
+    /// Ritmo recente dell'esame in studio, in minuti al giorno.
+    pub piano_ritmo: u32,
+    /// Minuti al giorno che servono per arrivare all'appello.
+    pub piano_minuti_al_giorno: Option<u32>,
 }
 
 impl StatoApp {
     /// Crea lo stato iniziale e carica la configurazione da disco.
     pub fn nuovo() -> Self {
         let config = carica_configurazione();
-        let testo_domini = lista_alle_righe(&config.domini_vietati);
         let testo_parole = lista_alle_righe(&config.parole_vietate);
         let sfide = config.sfide_a_sorpresa;
         let xp = PuntiXp {
             punti: config.xp_punti,
             distrazioni: config.xp_distrazioni,
         };
+        let storico = crate::storico::carica();
+        let secondi_documenti = crate::appelli::secondi_per_documento(&storico);
         Self {
             config,
             sessione: None,
@@ -171,7 +189,7 @@ impl StatoApp {
             anti_sonno: AntiSonno::nuovo(sfide),
             task: crate::task::GestoreTask::nuovo(),
             ai: crate::ai::Assistente::nuovo(),
-            storico: crate::storico::carica(),
+            storico,
             ultimo_riepilogo: None,
             collezioni: Vec::new(),
             esame_scelto: None,
@@ -181,6 +199,7 @@ impl StatoApp {
             pausa_scade: None,
             evidenziazioni: Vec::new(),
             snapshot_zotero: None,
+            snapshot_in_arrivo: None,
             campo_notebook: String::new(),
             anteprima_notebooklm: None,
             campo_pensiero: String::new(),
@@ -188,6 +207,7 @@ impl StatoApp {
             domanda_notebooklm: String::new(),
             esame_notebooklm: None,
             zotero_incassato: None,
+            attesa_zotero: None,
             area_zotero: None,
             pagina: None,
             area_pagina: None,
@@ -200,8 +220,10 @@ impl StatoApp {
             testo_sblocco: String::new(),
             lunghezza_precedente: 0,
             date_in_edizione: std::collections::BTreeMap::new(),
-            testo_domini,
             testo_parole,
+            secondi_documenti,
+            piano_ritmo: 0,
+            piano_minuti_al_giorno: None,
         }
     }
 
@@ -305,10 +327,14 @@ impl StatoApp {
         self.memoria_esame = self.nome_esame();
     }
 
-    /// Salva la configurazione, includendo le liste editate dall'utente.
+    /// Salva la configurazione, dicendo se non e' riuscita.
+    ///
+    /// Non si puo' zitticare l'errore: se la cartella non e' scrivibile,
+    /// l'XP e le impostazioni andrebbero persi senza che l'utente lo sappia.
     pub fn salva_configurazione(&mut self) {
-        self.aggiorna_configurazione_da_stato();
-        salva_configurazione(&self.config);
+        if let Err(e) = self.salva_configurazione_con_esito() {
+            self.avviso = Some(format!("Configurazione non salvata: {e}"));
+        }
     }
 
     /// Salva la configurazione restituendo un errore se la persistenza fallisce.
@@ -318,12 +344,29 @@ impl StatoApp {
     }
 
     fn aggiorna_configurazione_da_stato(&mut self) {
-        self.config.domini_vietati = righe_alla_lista(&self.testo_domini);
         self.config.parole_vietate = righe_alla_lista(&self.testo_parole);
         // Gli XP fanno parte della configurazione: senza questo si azzerano
         // a ogni riavvio e la gamification perde senso.
         self.config.xp_punti = self.xp.punti;
         self.config.xp_distrazioni = self.xp.distrazioni;
+    }
+
+    /// Ricalcola il piano di studio e il ritmo dell'esame corrente.
+    ///
+    /// Va fatto quando lo storico o l'esame cambiano, non a ogni frame:
+    /// il calcolo clona il titolo di ogni documento e parsa ogni data.
+    pub fn ricalcola_piano(&mut self) {
+        let esame = self.nome_esame();
+        let ritmo = crate::appelli::ritmo_esame(&self.storico, &esame);
+        let giorni = crate::appelli::conto_di(&self.config, &esame).map(|(giorni, _)| giorni);
+        let piano = crate::appelli::piano(
+            &esame,
+            &self.secondi_documenti,
+            &self.collezioni,
+            giorni,
+        );
+        self.piano_ritmo = ritmo;
+        self.piano_minuti_al_giorno = piano.minuti_al_giorno;
     }
 
     /// Aggiunge XP e li salva subito, cosi' un crash non li perde.
@@ -380,13 +423,5 @@ impl StatoApp {
             VelocitaVoce::Veloce => "Veloce".to_string(),
             VelocitaVoce::Turbo => "Turbo".to_string(),
         };
-    }
-}
-
-impl Drop for StatoApp {
-    /// Fail-safe: alla chiusura il file `hosts` deve tornare sempre pulito.
-    fn drop(&mut self) {
-        crate::blocker::ripristina_hosts();
-        crate::blocker::flush_dns();
     }
 }

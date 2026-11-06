@@ -7,12 +7,24 @@
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rodio::{Decoder, Source};
 
 /// Nome del file cercato accanto all'eseguibile.
 pub const FILE_PIOGGIA: &str = "pioggia.mp3";
+
+/// Percorso del file audio letto come pioggia.
+///
+/// Prima accanto all'eseguibile, dove lo mette il README; se non c'e' la
+/// cartella dati, cosi' chi lo sposta li' lo trova lo stesso.
+pub fn percorso_file() -> PathBuf {
+    let vicino = crate::config::cartella_programma().join(FILE_PIOGGIA);
+    if vicino.exists() {
+        return vicino;
+    }
+    crate::config::cartella_dati().join(FILE_PIOGGIA)
+}
 
 /// Durata della sovrapposizione fra la fine e l'inizio della traccia.
 const DURATA_SFUMATURA: usize = 80;

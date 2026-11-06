@@ -162,8 +162,8 @@ cargo build --release
 .\target\release\focusanchor.exe
 ```
 
-**Avvia come Amministratore** se vuoi il blocco dei domini: senza permessi
-elevati resta attivo solo il Guardiano Finestre (Livello 2).
+Non serve avviare come Amministratore: l'app non tocca il file `hosts` e
+non chiude nessuna finestra.
 
 ## Uso con Zotero
 
@@ -270,18 +270,26 @@ laterale dell'item** (a destra del PDF, sotto le note): ▶ Avvia, ⏸ Pausa,
 Il canale è un file nella cartella dati di Zotero (`focusanchor_comando.json`):
 niente porte aperte, niente server, niente chiavi.
 
-## File creati accanto all'eseguibile
+## I file che crea l'app
+
+I dati stanno in `%LOCALAPPDATA%\FocusAnchor`: li' si puo' sempre scrivere,
+e non spariscono quando il programma viene spostato o reinstallato. La
+prima volta, i file delle versioni vecchie (accanto all'eseguibile) vengono
+portati li' automaticamente.
 
 | File | Contenuto |
 | --- | --- |
-| `config.json` | Impostazioni e liste dei domini bloccati |
+| `config.json` | Impostazioni, XP e parole chiave |
 | `pioggia.mp3` | Pioggia registrata della modalità *Pioggia naturale* (sostituibile) |
 | `parcheggio_pensieri.txt` | Idee fuori tema salvate durante lo studio |
 | `riassunto_studio.md` | Risposte alle domande a tradimento (leggibile a occhio) |
-| `esame_<nome>.json` | Carte di ripasso di quell'esame, con le scadenze |
+| `esame_<esame>.json` | Carte di ripasso di quell'esame, con le scadenze |
 | `anki_<esame>.txt` | Le stesse carte, in formato tabulato per Anki |
 | `notebooklm_<esame>.md` | Materiale pronto per NotebookLM |
 | `storico.json` | Sessioni concluse, XP e tempo per documento |
+
+Il file `pioggia.mp3` si cerca prima accanto all'eseguibile e poi nella
+cartella dei dati.
 
 ## Privacy
 
@@ -298,23 +306,29 @@ non è una bacchetta magica: se ti distrae, spegnilo.
 
 | Modulo | Responsabilità |
 | --- | --- |
-| `main.rs` | Avvio, panic hook, cambio finestra |
+| `main.rs` | Avvio, migrazione dei dati, cambio finestra |
 | `state.rs` | Stato dell'applicazione |
 | `sessione.rs` | Timer di studio, pause, richiami |
-| `blocker.rs` | File `hosts`, flush DNS, API Win32 |
+| `blocker.rs` | Pulizia del file `hosts` e API Win32 |
 | `guardia.rs` | Sorveglianza finestre e cambio contesto |
 | `interleaving.rs` | Rotazione fra i testi |
 | `anti_sleep.rs` | S.O.S. sonnolenza e domande a tradimento |
 | `audio.rs` / `audio_voce.rs` | Sottofondo procedurale e sintesi vocale |
-| `suono.rs` | Generatori audio (rumore, binaurale, beep) |
+| `suono.rs` / `suono_file.rs` / `suono_pioggia.rs` | Generatori audio e file |
 | `zotero.rs` / `zotero_query.rs` | Snapshot e query su Zotero |
 | `zotero_attivo.rs` | Legge cosa dice l'estensione Zotero |
+| `incasso.rs` | Aggancia la finestra di Zotero dentro l'app |
 | `tempo.rs` | Tempo per documento dalla finestra in primo piano |
-| `carte.rs` | Carte di ripasso e ripetizione dilazionata |
+| `carte.rs` / `carte_sottolineature.rs` | Carte di ripasso e ripetizione dilazionata |
 | `storico.rs` | Sessioni concluse e statistiche |
 | `ai.rs` | Assistente via `opencode run` |
 | `notebooklm.rs` | Ponte verso NotebookLM |
 | `task.rs` / `xp.rs` | Micro-task e punti |
+| `appelli.rs` | Date degli appelli e piano di studio |
+| `archivi.rs` | File dell'utente (pensieri, riassunti, schede) |
+| `comando.rs` / `comandi_zotero.rs` | Canale con l'estensione Zotero |
+| `config.rs` | Configurazione persistente e cartella dei dati |
+| `webview.rs` | Browser incorporato per NotebookLM |
 | `ui*.rs` | Interfaccia |
 | `plugin/` | Estensione Zotero (manifest, bootstrap, build) |
 

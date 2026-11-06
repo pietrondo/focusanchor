@@ -116,27 +116,18 @@ fn sezione_anki(ui: &mut egui::Ui, stato: &mut StatoApp) {
 
 /// Genera il pacchetto NotebookLM dell'esame corrente.
 ///
-/// Le sottolineature vengono rilette da Zotero al momento, cosi' il file
+/// I materiali vengono riletti da Zotero al momento, cosi' il file
 /// contiene anche quello che l'utente ha evidenziato durante la sessione.
+///
+/// La copia del database parte in un thread: quando arriva, i materiali
+/// vengono pubblicati e il pacchetto generato.
 pub(crate) fn genera_notebooklm(stato: &mut StatoApp) {
-    let aggiornamento = aggiorna_materiali_notebooklm(stato);
-    genera_dopo_aggiornamento(stato, aggiornamento);
-}
-
-fn aggiorna_materiali_notebooklm(stato: &mut StatoApp) -> Result<(), String> {
-    let Some(id) = stato.esame_scelto else {
-        crate::ui_esami::invalida_materiali_zotero(stato);
-        return Err("Seleziona un esame prima di generare la scheda.".into());
-    };
     let cartella = crate::config::cartella_dati();
-    crate::ui_esami::aggiorna_materiali_zotero(stato, id, &cartella, 400)
+    crate::ui_esami::avvia_snapshot(stato, &cartella, crate::ui_esami::LavoroZotero::SchedaNotebooklm);
 }
 
-fn genera_dopo_aggiornamento(stato: &mut StatoApp, aggiornamento: Result<(), String>) {
-    if let Err(e) = aggiornamento {
-        segnala_errore_materiali(stato, &format!("Scheda non aggiornata: {e}"));
-        return;
-    }
+/// Genera il pacchetto con i materiali appena pubblicati.
+pub(crate) fn genera_scheda(stato: &mut StatoApp) {
     let esame = stato.nome_esame();
     let riassunti = match archivi::leggi_riassunti() {
         Ok(riassunti) => riassunti,
@@ -147,6 +138,11 @@ fn genera_dopo_aggiornamento(stato: &mut StatoApp, aggiornamento: Result<(), Str
     };
     let risultato = archivi::genera_pacchetto_notebooklm(&esame, &stato.evidenziazioni, &riassunti);
     finalizza_generazione(stato, &esame, risultato);
+}
+
+/// Dice che la scheda non e' stata generata e il perche'.
+pub(crate) fn segnala_scheda_non_aggiornata(stato: &mut StatoApp, e: &str) {
+    segnala_errore_materiali(stato, &format!("Scheda non aggiornata: {e}"));
 }
 
 fn finalizza_generazione(stato: &mut StatoApp, esame: &str, risultato: Result<(), String>) {
@@ -208,9 +204,32 @@ mod test_aggiornamento_notebooklm {
             data: "2026-01-01".into(),
         }];
 
-        let risultato = aggiorna_materiali_notebooklm(&mut stato);
+        // Il caricamento parte in un thread: si aspetta l'esito e lo si
+        // applica come farebbe il ciclo principale.
+        let root = std::env::temp_dir().join(format!(
+            "focusanchor-scheda-fallita-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        crate::ui_esami::carica_esami_con(&mut stato, &root);
+        let esito = stato
+            .snapshot_in_arrivo
+            .take()
+            .expect("caricamento avviato")
+            .0
+            .recv()
+            .expect("esito del thread");
+        crate::ui_esami::applica_snapshot_ricevuto(
+            &mut stato,
+            esito,
+            crate::ui_esami::LavoroZotero::CaricaEsami,
+        );
 
-        assert!(risultato.is_err());
+        let _ = std::fs::remove_dir_all(&root);
         assert!(stato.evidenziazioni.is_empty());
         assert!(stato.snapshot_zotero.is_none());
         assert!(stato.collezioni.is_empty());
@@ -223,7 +242,7 @@ mod test_aggiornamento_notebooklm {
     fn il_refresh_fallito_interrompe_la_generazione_senza_notifica_di_successo() {
         let mut stato = StatoApp::nuovo();
         stato.conferma = Some(("Scheda pronta precedente".into(), std::time::Instant::now()));
-        genera_dopo_aggiornamento(&mut stato, Err("Zotero non disponibile".into()));
+        segnala_scheda_non_aggiornata(&mut stato, "Zotero non disponibile");
 
         assert!(stato.conferma.is_none());
         assert!(stato

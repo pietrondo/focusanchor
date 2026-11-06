@@ -45,8 +45,6 @@ pub struct Configurazione {
     pub voce_attiva: bool,
     /// Sfide anti-noia a sorpresa attive.
     pub sfide_a_sorpresa: bool,
-    /// Domini bloccati nel file `hosts`.
-    pub domini_vietati: Vec<String>,
     /// Parole chiave cercate nei titoli delle finestre.
     pub parole_vietate: Vec<String>,
     /// Cartella Zotero personalizzata (vuota = percorso standard).
@@ -107,7 +105,6 @@ impl Default for Configurazione {
             richiamo_vocale: true,
             voce_attiva: true,
             sfide_a_sorpresa: true,
-            domini_vietati: default_domini(),
             parole_vietate: default_parole(),
             cartella_zotero: String::new(),
             notebook_esami: std::collections::BTreeMap::new(),
@@ -138,25 +135,6 @@ fn modello_ai_default() -> String {
     "opencode-go/deepseek-v4.1-flash".to_string()
 }
 
-/// Domini bloccati per default (social e video che fanno perdere il filo).
-pub fn default_domini() -> Vec<String> {
-    [
-        "reddit.com",
-        "www.reddit.com",
-        "old.reddit.com",
-        "youtube.com",
-        "www.youtube.com",
-        "x.com",
-        "twitter.com",
-        "facebook.com",
-        "instagram.com",
-        "twitch.tv",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect()
-}
-
 /// Parole chiave cercate nei titoli delle finestre attive.
 pub fn default_parole() -> Vec<String> {
     [
@@ -173,12 +151,68 @@ pub fn default_parole() -> Vec<String> {
     .collect()
 }
 
-/// Percorso della cartella dati (stessa cartella dell'eseguibile).
-pub fn cartella_dati() -> PathBuf {
+/// Cartella dell'eseguibile.
+///
+/// Non e' piu' la cartella dei dati: li' l'app scriveva tutto e, se il
+/// programma era installato in un percorso protetto, ogni scrittura
+/// falliva in silenzio. Resta per i file che stanno accanto al programma.
+pub fn cartella_programma() -> PathBuf {
     std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Cartella dei dati dell'utente.
+///
+/// Dentro `%LOCALAPPDATA%\FocusAnchor`: li' si puo' sempre scrivere, e i
+/// dati non spariscono quando il programma viene spostato o reinstallato.
+pub fn cartella_dati() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .map(|base| base.join("FocusAnchor"))
+        .unwrap_or_else(cartella_programma)
+}
+
+/// File che le versioni vecchie scrivevano accanto all'eseguibile.
+const FILE_PROPRI: &[&str] = &[
+    "config.json",
+    "storico.json",
+    "parcheggio_pensieri.txt",
+    "riassunto_studio.md",
+];
+
+/// Prefissi dei file per esame: carte di ripasso, carte Anki, schede NotebookLM.
+const PREFISSI_PROPRI: &[&str] = &["esame_", "anki_", "notebooklm_"];
+
+/// Porta nella cartella dati i file delle versioni vecchie.
+///
+/// Va fatto una volta sola: senza, chi ha gia' studiato si ritroverebbe
+/// con XP, storico e carte di ripasso a zero.
+pub fn migra_dati_vecchi() {
+    let vecchia = cartella_programma();
+    let nuova = cartella_dati();
+    if vecchia == nuova || !vecchia.is_dir() {
+        return;
+    }
+    let Ok(voci) = fs::read_dir(&vecchia) else {
+        return;
+    };
+    if fs::create_dir_all(&nuova).is_err() {
+        return;
+    }
+    for voce in voci.flatten() {
+        let nome = voce.file_name().to_string_lossy().into_owned();
+        let nostro = FILE_PROPRI.contains(&nome.as_str())
+            || PREFISSI_PROPRI.iter().any(|p| nome.starts_with(p));
+        if !nostro || !voce.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let destinazione = nuova.join(&nome);
+        if !destinazione.exists() {
+            let _ = fs::copy(voce.path(), &destinazione);
+        }
+    }
 }
 
 /// Percorso del file di configurazione.
@@ -193,11 +227,6 @@ pub fn carica_configurazione() -> Configurazione {
         return Configurazione::default();
     };
     serde_json::from_str(&testo).unwrap_or_default()
-}
-
-/// Salva la configurazione su disco in formato leggibile.
-pub fn salva_configurazione(config: &Configurazione) {
-    let _ = salva_configurazione_con_esito(config);
 }
 
 /// Salva la configurazione e restituisce l'errore se serializzazione o scrittura falliscono.
@@ -216,6 +245,23 @@ fn salva_configurazione_a_con_writer(
 ) -> Result<(), String> {
     let json = serde_json::to_vec_pretty(config)
         .map_err(|e| format!("Serializzazione configurazione fallita: {e}"))?;
+    scrivi_atomico_con(percorso, &json, scrivi)
+}
+
+/// Scrive un file in modo atomico: prima su un temporaneo, poi rinomina.
+///
+/// Il rin finale e' atomico: il file precedente resta intatto se la
+/// scrittura va storta, e il lettore non vede mai meta' file.
+pub fn scrivi_atomico(percorso: &std::path::Path, contenuto: &[u8]) -> Result<(), String> {
+    scrivi_atomico_con(percorso, contenuto, |file, bytes| file.write_all(bytes))
+}
+
+/// Come `scrivi_atomico`, ma con la scrittura iniettabile (per i test).
+fn scrivi_atomico_con(
+    percorso: &std::path::Path,
+    contenuto: &[u8],
+    scrivi: impl FnOnce(&mut File, &[u8]) -> io::Result<()>,
+) -> Result<(), String> {
     let directory = percorso.parent().unwrap_or_else(|| std::path::Path::new("."));
     let nome = percorso
         .file_name()
@@ -238,7 +284,7 @@ fn salva_configurazione_a_con_writer(
             .open(&temporaneo)
             .map_err(|e| format!("Creazione file temporaneo configurazione fallita: {e}"))?;
         temporaneo_creato = true;
-        scrivi(&mut file, &json)
+        scrivi(&mut file, contenuto)
             .map_err(|e| format!("Scrittura configurazione temporanea fallita: {e}"))?;
         file.sync_all()
             .map_err(|e| format!("Sincronizzazione configurazione temporanea fallita: {e}"))?;

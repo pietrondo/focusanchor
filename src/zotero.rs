@@ -52,7 +52,7 @@ pub struct Evidenziazione {
 
 /// Percorso della cartella dati di Zotero.
 pub fn cartella_zotero() -> Option<PathBuf> {
-    dirs::home_dir().map(|casa| casa.join("Zotero"))
+    std::env::var_os("USERPROFILE").map(|casa| PathBuf::from(casa).join("Zotero"))
 }
 
 /// Percorso del database Zotero, se la cartella standard esiste.
@@ -81,6 +81,27 @@ pub fn percorso_database_personalizzato(cartella: &str) -> Option<PathBuf> {
 }
 
 /// Crea uno snapshot del database Zotero in una cartella temporanea.
+///
+/// Usa l'API di backup di SQLite: legge il database vivo (WAL compreso) in
+/// modo coerente, senza le corse che si hanno copiando i file a mano mentre
+/// Zotero scrive. Se il backup non e' possibile, ripiega sulla copia dei file.
+/// Prepara lo snapshot del database Zotero in un thread.
+///
+/// La copia e' lenta: il file puo' pesare centinaia di megabyte, e la
+/// finestra non deve aspettarla.
+pub fn snapshot_in_thread(
+    cartella_app: PathBuf,
+    cartella_zotero: String,
+) -> std::sync::mpsc::Receiver<Result<PathBuf, String>> {
+    let (mittente, ricevitore) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let esito = crea_snapshot_con(&cartella_app, &cartella_zotero);
+        let _ = mittente.send(esito);
+    });
+    ricevitore
+}
+
+/// Crea un snapshot del database Zotero in una cartella temporanea.
 ///
 /// Usa l'API di backup di SQLite: legge il database vivo (WAL compreso) in
 /// modo coerente, senza le corse che si hanno copiando i file a mano mentre
@@ -201,6 +222,10 @@ pub fn apri_pdf_in_zotero(chiave_pdf: &str) -> Result<(), String> {
 /// Lancia un URI con il programma che Windows gli associa.
 fn apri_uri(uri: &str) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
+    // Niente caratteri che `cmd` prenderebbe per un separatore.
+    if uri.contains(['&', '|', '<', '>', '^', '"', ' ', '\n', '\r']) {
+        return Err("Chiave di Zotero non valida.".into());
+    }
     Command::new("cmd")
         .args(["/C", "start", "", uri])
         .creation_flags(crate::blocker::CREATE_NO_WINDOW)

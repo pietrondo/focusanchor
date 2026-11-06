@@ -38,56 +38,51 @@ pub enum Esito {
     Errore(String),
 }
 
-/// Una domanda in corso, con la sua risposta.
+/// Una richiesta in corso, con la sua risposta.
 ///
 /// La chiamata sta in un thread: NotebookLM puo' metterci dieci secondi e
 /// l'interfaccia non deve congelarsi.
-pub struct Chiedi {
-    canale: Receiver<Esito>,
-    mittente: Sender<Esito>,
-    /// Risposta arrivata, se c'e'.
-    pub risposta: Option<String>,
-    /// Vero mentre NotebookLM sta pensando.
+///
+/// `Chiedi` e `Genera` sono la stessa cosa con un tipo di esito diverso:
+/// per questo c'e' un solo tipo, con il tipo parametrico.
+pub struct InCorso<T> {
+    canale: Receiver<T>,
+    mittente: Sender<T>,
+    /// Esito arrivato, se c'e'.
+    pub esito: Option<T>,
+    /// Vero mentre NotebookLM sta lavorando.
     pub in_corso: bool,
-    /// Esame a cui si riferisce la domanda in corso.
+    /// Esame a cui si riferisce il lavoro.
     pub esame: String,
 }
 
-impl Chiedi {
-    /// Crea lo stato, senza nessuna richiesta in corso.
+impl<T: Send + 'static> InCorso<T> {
+    /// Crea lo stato, senza nessun lavoro in corso.
     pub fn nuovo() -> Self {
         let (mittente, canale) = mpsc::channel();
         Self {
             canale,
             mittente,
-            risposta: None,
+            esito: None,
             in_corso: false,
             esame: String::new(),
         }
     }
 
-    /// Manda una domanda al notebook dell'esame.
+    /// Avvia il lavoro in un thread separato.
     ///
-    /// Se c'e' gia' una richiesta in corso non ne parte un'altra: due
-    /// processi insieme consumano quota per niente.
-    pub fn chiedi(&mut self, notebook: &str, esame: &str, domanda: &str) {
+    /// Se c'e' gia' un lavoro in corso non ne parte un altro: due processi
+    /// insieme consumano quota per niente.
+    pub fn avvia(&mut self, esame: &str, lavoro: impl FnOnce() -> T + Send + 'static) {
         if self.in_corso {
             return;
         }
-        let domanda = domanda.trim();
-        if domanda.is_empty() || notebook.trim().is_empty() {
-            return;
-        }
-        self.risposta = None;
+        self.esito = None;
         self.in_corso = true;
         self.esame = esame.to_string();
-
         let mittente = self.mittente.clone();
-        let notebook = notebook.to_string();
-        let domanda = domanda.to_string();
         std::thread::spawn(move || {
-            let esito = esegui(&notebook, &domanda);
-            let _ = mittente.send(esito);
+            let _ = mittente.send(lavoro());
         });
     }
 
@@ -95,17 +90,29 @@ impl Chiedi {
     pub fn aggiorna(&mut self) {
         while let Ok(esito) = self.canale.try_recv() {
             self.in_corso = false;
-            match esito {
-                Esito::Risposta(testo) => self.risposta = Some(testo),
-                Esito::Errore(messaggio) => self.risposta = Some(messaggio),
-            }
+            self.esito = Some(esito);
         }
     }
 
-    /// Cancella la risposta mostrata.
+    /// Dimentica l'esito mostrato.
     pub fn pulisci(&mut self) {
-        self.risposta = None;
+        self.esito = None;
         self.esame.clear();
+    }
+}
+
+/// Le domande a NotebookLM.
+pub type Chiedi = InCorso<Esito>;
+
+/// La generazione di flashcard e la lettura delle fonti.
+pub type Genera = InCorso<Generazione>;
+
+impl InCorso<Esito> {
+    /// Manda una domanda al notebook dell'esame.
+    pub fn chiedi(&mut self, notebook: &str, esame: &str, domanda: &str) {
+        let notebook = notebook.to_string();
+        let domanda = domanda.to_string();
+        self.avvia(esame, move || esegui(&notebook, &domanda));
     }
 }
 
@@ -138,21 +145,6 @@ pub struct Flashcard {
     pub risposta: String,
 }
 
-/// Lavoro lungo in corso: generazione di flashcard o caricamento di fonti.
-///
-/// Come per le domande, il processo sta in un thread: generare un mazzo
-/// puo' richiedere minuti e l'interfaccia non deve congelarsi.
-pub struct Genera {
-    canale: Receiver<Generazione>,
-    mittente: Sender<Generazione>,
-    /// Esito arrivato, se c'e'.
-    pub esito: Option<Generazione>,
-    /// Vero mentre NotebookLM sta lavorando.
-    pub in_corso: bool,
-    /// Esame a cui si riferisce il lavoro.
-    pub esame: String,
-}
-
 /// Esito di un lavoro lungo.
 #[derive(Debug, Clone)]
 pub enum Generazione {
@@ -167,96 +159,39 @@ pub enum Generazione {
 }
 
 impl Genera {
-    /// Crea lo stato, senza nessun lavoro in corso.
-    pub fn nuovo() -> Self {
-        let (mittente, canale) = mpsc::channel();
-        Self {
-            canale,
-            mittente,
-            esito: None,
-            in_corso: false,
-            esame: String::new(),
-        }
-    }
-
     /// Genera le flashcard del notebook e le restituisce.
     pub fn flashcard(&mut self, notebook: &str, esame: &str) {
-        if self.in_corso {
-            return;
-        }
-        self.esito = None;
-        self.in_corso = true;
-        self.esame = esame.to_string();
-
-        let mittente = self.mittente.clone();
         let notebook = notebook.to_string();
-        std::thread::spawn(move || {
-            let esito = match genera_flashcard(&notebook) {
+        self.avvia(esame, move || {
+            match genera_flashcard(&notebook) {
                 Ok(carte) => Generazione::Flashcard(carte),
                 Err(e) => Generazione::Errore(e),
-            };
-            let _ = mittente.send(esito);
+            }
         });
     }
 
     /// Legge le fonti del notebook.
     pub fn fonti(&mut self, notebook: &str, esame: &str) {
-        if self.in_corso {
-            return;
-        }
-        self.esito = None;
-        self.in_corso = true;
-        self.esame = esame.to_string();
-
-        let mittente = self.mittente.clone();
         let notebook = notebook.to_string();
-        std::thread::spawn(move || {
-            let esito = match elenco_fonti(&notebook) {
-                Ok(fonti) => Generazione::Fonti(fonti),
-                Err(e) => Generazione::Errore(e),
-            };
-            let _ = mittente.send(esito);
+        self.avvia(esame, move || match elenco_fonti(&notebook) {
+            Ok(fonti) => Generazione::Fonti(fonti),
+            Err(e) => Generazione::Errore(e),
         });
     }
 
     /// Carica un file locale come fonte del notebook.
     pub fn carica(&mut self, notebook: &str, esame: &str, percorso: std::path::PathBuf) {
-        if self.in_corso {
-            return;
-        }
-        self.esito = None;
-        self.in_corso = true;
-        self.esame = esame.to_string();
-
-        let mittente = self.mittente.clone();
         let notebook = notebook.to_string();
-        std::thread::spawn(move || {
-            let esito = match aggiungi_fonte(&notebook, &percorso) {
-                Ok(()) => Generazione::Fatto(format!(
-                    "{} caricata come fonte nel notebook.",
-                    percorso
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_default()
-                )),
-                Err(e) => Generazione::Errore(e),
-            };
-            let _ = mittente.send(esito);
+        self.avvia(esame, move || match aggiungi_fonte(&notebook, &percorso) {
+            Ok(()) => Generazione::Fatto(format!(
+                "{} caricata come fonte nel notebook.",
+                percorso
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            )),
+            Err(e) => Generazione::Errore(e),
         });
-    }
-
-    /// Ritira l'esito, se e' arrivato.
-    pub fn aggiorna(&mut self) {
-        while let Ok(esito) = self.canale.try_recv() {
-            self.in_corso = false;
-            self.esito = Some(esito);
-        }
-    }
-
-    /// Dimentica l'esito mostrato.
-    pub fn pulisci(&mut self) {
-        self.esito = None;
-        self.esame.clear();
     }
 }
 
@@ -437,7 +372,7 @@ fn avvio_fallito(errore: &std::io::Error) -> String {
 
 
 /// Chiede a NotebookLM e restituisce la risposta.
-fn esegui(notebook: &str, domanda: &str) -> Esito {
+pub fn esegui(notebook: &str, domanda: &str) -> Esito {
     let mut figlio = match Command::new(ESEGUIBILE)
         .args([
             "ask",
@@ -716,6 +651,11 @@ pub fn apri(url: &str) -> Result<(), String> {
     // Solo http/https: un link incollato non deve poter lanciare altro.
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err("Il link del notebook deve iniziare con https://".into());
+    }
+    // Niente caratteri che `cmd` prenderebbe per un separatore: un link
+    // con un `&` diventerebbe un secondo comando.
+    if url.contains(['&', '|', '<', '>', '^', '"', '\n', '\r']) {
+        return Err("Il link del notebook ha caratteri non ammessi.".into());
     }
     Command::new("cmd")
         .args(["/C", "start", "", url])

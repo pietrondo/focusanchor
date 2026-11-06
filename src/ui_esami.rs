@@ -11,8 +11,24 @@ use crate::interleaving::Interleaving;
 use crate::state::StatoApp;
 use crate::zotero_query;
 
+/// Cosa fare quando arriva lo snapshot di Zotero.
+///
+/// La copia del database gira in un thread: quando arriva, si legge il
+/// database e si pubblicano i materiali.
+#[derive(Clone, Copy, PartialEq)]
+pub enum LavoroZotero {
+    /// Caricare gli esami e scegliere quello corrente.
+    CaricaEsami,
+    /// Ricaricare i testi dell'esame gia' scelto.
+    RicaricaTesti,
+    /// Ricaricare i testi e generare la scheda per NotebookLM.
+    SchedaNotebooklm,
+}
 
 /// Invalida i dati derivati da Zotero quando un refresh non e' completo.
+///
+/// Azzera anche la conferma: quella che era a schermo parlava dei
+/// materiali vecchi.
 pub(crate) fn invalida_materiali_zotero(stato: &mut StatoApp) {
     stato.snapshot_zotero = None;
     stato.collezioni.clear();
@@ -22,6 +38,7 @@ pub(crate) fn invalida_materiali_zotero(stato: &mut StatoApp) {
     stato.evidenziazioni.clear();
     stato.anteprima_notebooklm = None;
     stato.campo_notebook.clear();
+    stato.conferma = None;
 }
 
 /// Carica entrambi gli insiemi dal nuovo snapshot prima di pubblicarli nello stato.
@@ -62,119 +79,76 @@ fn leggi_materiali(
     Ok((documenti, evidenziazioni))
 }
 
-/// Aggiorna snapshot e materiali selezionati come un'unica operazione.
-pub(crate) fn aggiorna_materiali_zotero(
-    stato: &mut StatoApp,
-    id: i64,
-    cartella_app: &std::path::Path,
-    limite_annotazioni: usize,
-) -> Result<(), String> {
-    let snapshot = match crate::zotero::crea_snapshot_con(
-        cartella_app,
-        &stato.config.cartella_zotero,
-    ) {
-        Ok(snapshot) => snapshot,
-        Err(e) => {
-            invalida_materiali_zotero(stato);
-            return Err(e);
-        }
-    };
-    let collezioni = match zotero_query::collezioni(&snapshot) {
-        Ok(collezioni) => collezioni,
-        Err(e) => {
-            invalida_materiali_zotero(stato);
-            return Err(format!("Lettura collezioni Zotero fallita: {e}"));
-        }
-    };
-    if !collezioni.iter().any(|collezione| collezione.id == id) {
-        invalida_materiali_zotero(stato);
-        return Err("L'esame selezionato non è più presente in Zotero.".into());
-    }
-    match leggi_materiali(&snapshot, id, 60, limite_annotazioni) {
-        Ok((documenti, evidenziazioni)) => {
-            let esame = collezioni
-                .iter()
-                .find(|collezione| collezione.id == id)
-                .map(|collezione| collezione.nome.as_str());
-            let campo_notebook = esame
-                .and_then(|nome| stato.config.notebook_esami.get(nome).cloned())
-                .unwrap_or_default();
-            stato.snapshot_zotero = Some(snapshot);
-            stato.collezioni = collezioni;
-            stato.esame_scelto = Some(id);
-            stato.documenti_esame = documenti;
-            stato.evidenziazioni = evidenziazioni;
-            stato.anteprima_notebooklm = None;
-            stato.campo_notebook = campo_notebook;
-            stato
-                .testi_scelti
-                .retain(|titolo| stato.documenti_esame.iter().any(|d| &d.titolo == titolo));
-            Ok(())
-        }
-        Err(e) => {
-            invalida_materiali_zotero(stato);
-            Err(e)
-        }
-    }
-}
-
-/// Cambia esame e ricarica i testi della nuova collezione.
-pub fn cambia_esame(stato: &mut StatoApp, nuovo: Option<i64>) {
-    let Some(id) = nuovo else {
-        stato.conferma = None;
-        stato.esame_scelto = None;
-        stato.documenti_esame.clear();
-        stato.testi_scelti.clear();
-        stato.evidenziazioni.clear();
-        stato.anteprima_notebooklm = None;
-        stato.campo_notebook.clear();
-        return;
-    };
-    let esame = stato.collezioni.iter().find(|c| c.id == id).map(|c| c.nome.clone());
-    let Some(esame) = esame else {
-        invalida_materiali_zotero(stato);
-        stato.conferma = None;
-        stato.avviso = Some("L'esame selezionato non è più presente in Zotero.".into());
-        return;
-    };
-    let Some(snapshot) = stato.snapshot_zotero.clone() else {
-        invalida_materiali_zotero(stato);
-        stato.conferma = None;
-        stato.avviso = Some("Ricarica Zotero prima di selezionare un esame.".into());
-        return;
-    };
-    match applica_snapshot_materiali(stato, id, &snapshot) {
-        Ok(()) => {
-            stato.conferma = None;
-            stato.campo_notebook = stato.config.notebook_esami.get(&esame).cloned().unwrap_or_default();
-            stato.avviso = None;
-        }
-        Err(e) => {
-            invalida_materiali_zotero(stato);
-            stato.conferma = None;
-            stato.avviso = Some(format!("Materiali dell'esame non aggiornati: {e}"));
-        }
-    }
-}
-
-/// Ricarica i testi dell'esame tenendo le scelte ancora valide.
+/// Avvia la copia del database Zotero in un thread.
 ///
-/// Serve quando l'utente aggiunge libri in Zotero durante la preparazione:
-/// non deve perdere i testi gia' spuntati. Lo snapshot viene rifatto da zero:
-/// rileggere la copia vecchia mostrerebbe sempre la stessa lista, e il
-/// pulsante direbbe una bugia.
-pub fn ricarica_testi(stato: &mut StatoApp) {
-    let Some(id) = stato.esame_scelto else {
-        return;
-    };
-    let cartella = crate::config::cartella_dati();
-    match aggiorna_materiali_zotero(stato, id, &cartella, 40) {
-        Ok(()) => {
-            crate::ui_archivi::segnala_successo_materiali(stato, "Testi ricaricati da Zotero.");
+/// La copia e' lenta: il file puo' pesare centinaia di megabyte. La
+/// finestra non deve aspettarla, quindi il lavoro parte qui e i materiali
+/// vengono pubblicati quando lo snapshot arriva.
+pub fn avvia_snapshot(stato: &mut StatoApp, cartella_app: &std::path::Path, lavoro: LavoroZotero) {
+    stato.snapshot_in_arrivo = Some((
+        crate::zotero::snapshot_in_thread(
+            cartella_app.to_path_buf(),
+            stato.config.cartella_zotero.clone(),
+        ),
+        lavoro,
+    ));
+}
+
+/// Raccoglie lo snapshot arrivato e pubblica i materiali.
+///
+/// Va chiamata a ogni frame: quando il thread ha finito, i dati entrano
+/// nello stato.
+pub fn aggiorna_snapshot(stato: &mut StatoApp) {
+    let esito = {
+        let ricevitore = match stato.snapshot_in_arrivo.as_ref() {
+            Some((ricevitore, _)) => ricevitore,
+            None => return,
+        };
+        match ricevitore.try_recv() {
+            Ok(esito) => esito,
+            // Il thread sta ancora lavorando: si riprova al frame dopo.
+            Err(_) => return,
         }
+    };
+    let lavoro = match stato.snapshot_in_arrivo.take() {
+        Some((_, lavoro)) => lavoro,
+        None => return,
+    };
+    applica_snapshot_ricevuto(stato, esito, lavoro);
+}
+
+/// Applica lo snapshot arrivato dal thread.
+pub fn applica_snapshot_ricevuto(
+    stato: &mut StatoApp,
+    esito: Result<std::path::PathBuf, String>,
+    lavoro: LavoroZotero,
+) {
+    match esito {
+        Ok(snapshot) => applica_snapshot(stato, snapshot, lavoro),
         Err(e) => {
-            stato.conferma = None;
-            stato.avviso = Some(format!("Ricarica testi: {e}"));
+            invalida_materiali_zotero(stato);
+            if lavoro == LavoroZotero::SchedaNotebooklm {
+                crate::ui_archivi::segnala_scheda_non_aggiornata(stato, &e);
+            } else {
+                stato.avviso = Some(e);
+            }
+        }
+    }
+}
+
+/// Pubblica i materiali letti dallo snapshot.
+fn applica_snapshot(stato: &mut StatoApp, snapshot: std::path::PathBuf, lavoro: LavoroZotero) {
+    match lavoro {
+        LavoroZotero::CaricaEsami => pubblica_esami(stato, snapshot),
+        LavoroZotero::RicaricaTesti => {
+            if pubblica_testi(stato, snapshot, 40) {
+                crate::ui_archivi::segnala_successo_materiali(stato, "Testi ricaricati da Zotero.");
+            }
+        }
+        LavoroZotero::SchedaNotebooklm => {
+            if pubblica_testi(stato, snapshot, 400) {
+                crate::ui_archivi::genera_scheda(stato);
+            }
         }
     }
 }
@@ -185,17 +159,19 @@ pub fn carica_esami(stato: &mut StatoApp) {
     carica_esami_con(stato, &cartella);
 }
 
-fn carica_esami_con(stato: &mut StatoApp, cartella_app: &std::path::Path) {
-    let percorso = stato.config.cartella_zotero.clone();
-    let snapshot = match crate::zotero::crea_snapshot_con(cartella_app, &percorso) {
-        Ok(s) => s,
-        Err(e) => {
-            invalida_materiali_zotero(stato);
-            stato.conferma = None;
-            stato.avviso = Some(e);
-            return;
-        }
-    };
+/// Avvia il caricamento di tutti gli esami.
+pub fn carica_esami_con(stato: &mut StatoApp, cartella_app: &std::path::Path) {
+    avvia_snapshot(stato, cartella_app, LavoroZotero::CaricaEsami);
+}
+
+/// Ricarica i testi dell'esame scelto.
+pub fn ricarica_testi(stato: &mut StatoApp) {
+    let cartella = crate::config::cartella_dati();
+    avvia_snapshot(stato, &cartella, LavoroZotero::RicaricaTesti);
+}
+
+/// Pubblica gli esami e i testi dell'esame corrente.
+fn pubblica_esami(stato: &mut StatoApp, snapshot: std::path::PathBuf) {
     let elenco = match zotero_query::collezioni(&snapshot) {
         Ok(elenco) => elenco,
         Err(e) => {
@@ -256,6 +232,96 @@ fn carica_esami_con(stato: &mut StatoApp, cartella_app: &std::path::Path) {
         .testi_scelti
         .retain(|titolo| stato.documenti_esame.iter().any(|d| &d.titolo == titolo));
     stato.avviso = None;
+    stato.ricalcola_piano();
+}
+
+/// Pubblica i testi dell'esame scelto. Vero se sono stati pubblicati.
+fn pubblica_testi(stato: &mut StatoApp, snapshot: std::path::PathBuf, limite: usize) -> bool {
+    let Some(id) = stato.esame_scelto else {
+        invalida_materiali_zotero(stato);
+        stato.avviso = Some("Seleziona un esame prima di ricaricare i testi.".into());
+        return false;
+    };
+    let collezioni = match zotero_query::collezioni(&snapshot) {
+        Ok(collezioni) => collezioni,
+        Err(e) => {
+            invalida_materiali_zotero(stato);
+            stato.avviso = Some(format!("Lettura collezioni Zotero fallita: {e}"));
+            return false;
+        }
+    };
+    if !collezioni.iter().any(|collezione| collezione.id == id) {
+        invalida_materiali_zotero(stato);
+        stato.avviso = Some("L'esame selezionato non è più presente in Zotero.".into());
+        return false;
+    }
+    match leggi_materiali(&snapshot, id, 60, limite) {
+        Ok((documenti, evidenziazioni)) => {
+            let esame = collezioni
+                .iter()
+                .find(|collezione| collezione.id == id)
+                .map(|collezione| collezione.nome.as_str());
+            let campo_notebook = esame
+                .and_then(|nome| stato.config.notebook_esami.get(nome).cloned())
+                .unwrap_or_default();
+            stato.snapshot_zotero = Some(snapshot);
+            stato.collezioni = collezioni;
+            stato.documenti_esame = documenti;
+            stato.evidenziazioni = evidenziazioni;
+            stato.anteprima_notebooklm = None;
+            stato.campo_notebook = campo_notebook;
+            stato
+                .testi_scelti
+                .retain(|titolo| stato.documenti_esame.iter().any(|d| &d.titolo == titolo));
+            stato.ricalcola_piano();
+            true
+        }
+        Err(e) => {
+            invalida_materiali_zotero(stato);
+            stato.avviso = Some(format!("Lettura documenti Zotero fallita: {e}"));
+            false
+        }
+    }
+}
+
+/// Cambia esame e ricarica i testi della nuova collezione.
+pub fn cambia_esame(stato: &mut StatoApp, nuovo: Option<i64>) {
+    let Some(id) = nuovo else {
+        stato.conferma = None;
+        stato.esame_scelto = None;
+        stato.documenti_esame.clear();
+        stato.testi_scelti.clear();
+        stato.evidenziazioni.clear();
+        stato.anteprima_notebooklm = None;
+        stato.campo_notebook.clear();
+        return;
+    };
+    let esame = stato.collezioni.iter().find(|c| c.id == id).map(|c| c.nome.clone());
+    let Some(esame) = esame else {
+        invalida_materiali_zotero(stato);
+        stato.conferma = None;
+        stato.avviso = Some("L'esame selezionato non è più presente in Zotero.".into());
+        return;
+    };
+    let Some(snapshot) = stato.snapshot_zotero.clone() else {
+        invalida_materiali_zotero(stato);
+        stato.conferma = None;
+        stato.avviso = Some("Ricarica Zotero prima di selezionare un esame.".into());
+        return;
+    };
+    match applica_snapshot_materiali(stato, id, &snapshot) {
+        Ok(()) => {
+            stato.conferma = None;
+            stato.campo_notebook = stato.config.notebook_esami.get(&esame).cloned().unwrap_or_default();
+            stato.avviso = None;
+            stato.ricalcola_piano();
+        }
+        Err(e) => {
+            invalida_materiali_zotero(stato);
+            stato.conferma = None;
+            stato.avviso = Some(format!("Materiali dell'esame non aggiornati: {e}"));
+        }
+    }
 }
 
 /// Rileva il PDF aperto su Zotero e lo usa come obiettivo.
@@ -281,6 +347,10 @@ pub fn avvia_sessione(
     mittente: &Sender<Segnale>,
 ) {
     stato.salva_configurazione();
+
+    // Durante la sessione la finestra di Zotero viene staccata: non ha
+    // senso continuare ad aspettarla.
+    stato.attesa_zotero = None;
 
     // I testi spuntati diventano la rotazione della sessione.
     stato.interleaving = Interleaving::nuovo(stato.testi_scelti.clone());
@@ -506,6 +576,19 @@ mod test_ricarica_atomica {
         assert!(stato.conferma.is_none());
     }
 
+    /// Avvia un lavoro su Zotero e aspetta il risultato del thread.
+    fn applica_dopo(stato: &mut StatoApp, root: &std::path::Path, lavoro: LavoroZotero) {
+        avvia_snapshot(stato, root, lavoro);
+        let esito = stato
+            .snapshot_in_arrivo
+            .take()
+            .expect("caricamento avviato")
+            .0
+            .recv()
+            .expect("esito del thread");
+        applica_snapshot_ricevuto(stato, esito, lavoro);
+    }
+
     #[test]
     fn errore_creazione_snapshot_invalida_i_dati_e_non_mostra_successo() {
         let mut stato = StatoApp::nuovo();
@@ -535,8 +618,10 @@ mod test_ricarica_atomica {
             .into_owned();
         stato.conferma = Some(("Testi ricaricati da Zotero.".into(), std::time::Instant::now()));
 
-        ricarica_testi(&mut stato);
+        let root = cartella_app_test();
+        applica_dopo(&mut stato, &root, LavoroZotero::RicaricaTesti);
 
+        let _ = std::fs::remove_dir_all(&root);
         assert!(stato.snapshot_zotero.is_none());
         assert!(stato.collezioni.is_empty());
         assert!(stato.documenti_esame.is_empty());
@@ -544,7 +629,6 @@ mod test_ricarica_atomica {
         assert!(stato.conferma.is_none());
         assert!(stato.avviso.is_some());
     }
-
     #[test]
     fn carica_esami_con_database_non_disponibile_invalida_stato_precedente() {
         let mut stato = stato_con_materiali_obsoleti();
@@ -554,7 +638,7 @@ mod test_ricarica_atomica {
             .to_string_lossy()
             .into_owned();
 
-        carica_esami_con(&mut stato, &root);
+        applica_dopo(&mut stato, &root, LavoroZotero::CaricaEsami);
 
         let _ = std::fs::remove_dir_all(&root);
         assert!(stato.snapshot_zotero.is_none());
@@ -574,7 +658,7 @@ mod test_ricarica_atomica {
         let root = cartella_app_test();
         stato.config.cartella_zotero = db.to_string_lossy().into_owned();
 
-        carica_esami_con(&mut stato, &root);
+        applica_dopo(&mut stato, &root, LavoroZotero::CaricaEsami);
 
         let _ = std::fs::remove_file(db);
         let _ = std::fs::remove_dir_all(&root);
@@ -598,7 +682,7 @@ mod test_ricarica_atomica {
         let root = cartella_app_test();
         stato.config.cartella_zotero = db.to_string_lossy().into_owned();
 
-        carica_esami_con(&mut stato, &root);
+        applica_dopo(&mut stato, &root, LavoroZotero::CaricaEsami);
 
         let _ = std::fs::remove_file(db);
         let _ = std::fs::remove_dir_all(&root);
@@ -669,11 +753,20 @@ mod test_ricarica_atomica {
         assert!(!root.exists());
         std::fs::create_dir(&root).unwrap();
 
-        let risultato = aggiorna_materiali_zotero(&mut stato, 17, &root, 400);
+        // Il caricamento parte in un thread: si aspetta l'esito e lo si
+        // applica come farebbe il ciclo principale.
+        carica_esami_con(&mut stato, &root);
+        let esito = stato
+            .snapshot_in_arrivo
+            .take()
+            .expect("caricamento avviato")
+            .0
+            .recv()
+            .expect("esito del thread");
+        applica_snapshot_ricevuto(&mut stato, esito, LavoroZotero::CaricaEsami);
 
         let _ = std::fs::remove_file(&db);
         let _ = std::fs::remove_dir_all(&root);
-        assert!(risultato.is_ok());
         assert_eq!(stato.documenti_esame.len(), 1);
         assert_eq!(stato.documenti_esame[0].titolo, "Documento nuovo");
         assert_eq!(stato.evidenziazioni.len(), 1);

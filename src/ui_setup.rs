@@ -24,6 +24,9 @@ pub fn disegna(
         )
         .show(ctx, |ui| {
             ui.add_space(2.0);
+            // L'aggancio di Zotero continua fra un frame e l'altro: se
+            // Zotero non e' ancora aperto, la finestra non si blocca.
+            crate::ui_zotero::continua_aggancio(stato);
             intestazione(ui, stato);
             ui.add_space(10.0);
             pulsante_avvia(ui, stato, audio, mittente);
@@ -315,7 +318,7 @@ fn sezione_durata(ui: &mut egui::Ui, stato: &mut StatoApp) {
     }
 }
 
-/// Pulsante di avvio: applica il blocco hosts e apre la sessione.
+/// Pulsante di avvio: apre la sessione di studio.
 fn pulsante_avvia(
     ui: &mut egui::Ui,
     stato: &mut StatoApp,

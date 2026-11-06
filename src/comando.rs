@@ -56,12 +56,22 @@ pub fn leggi(cartella_config: &str) -> Option<Comando> {
 
 /// Cancella il comando dopo averlo eseguito.
 ///
-/// Il file sparisce invece di essere marcato: cosi' non c'e' stato da
-/// mantenere e un riavvio non riesegue niente.
-pub fn consuma(cartella_config: &str) {
-    if let Some(percorso) = percorso_comando(cartella_config) {
-        let _ = fs::remove_file(percorso);
+/// Si cancella solo se il file contiene ancora quello eseguito: se il
+/// plugin ne ha scritto un altro nel frattempo, quello nuovo non deve
+/// sparire con il vecchio.
+pub fn consuma(cartella_config: &str, id: &str) {
+    let Some(percorso) = percorso_comando(cartella_config) else {
+        return;
+    };
+    if let Ok(testo) = fs::read_to_string(&percorso) {
+        if serde_json::from_str::<Comando>(&testo)
+            .map(|comando| comando.id != id)
+            .unwrap_or(true)
+        {
+            return;
+        }
     }
+    let _ = fs::remove_file(percorso);
 }
 
 /// Dice a Zotero che l'app e' viva, cosa sta facendo e dove si trova.
@@ -117,10 +127,12 @@ pub fn battito(stato: &crate::state::StatoApp) {
         aggiornato: chrono::Local::now().timestamp_millis() as u64,
     };
     if let Ok(json) = serde_json::to_string(&battito) {
-        let _ = fs::write(percorso, json);
+        // Scrittura atomica: il plugin legge questo file mentre l'app lo
+        // scrive, e non deve vedere meta' file.
+        let _ = crate::config::scrivi_atomico(&percorso, json.as_bytes());
     }
     if let Some(dove) = percorso_eseguibile(&stato.config.cartella_zotero) {
-        let _ = fs::write(dove, eseguibile.display().to_string());
+        let _ = crate::config::scrivi_atomico(&dove, eseguibile.display().to_string().as_bytes());
     }
 }
 
@@ -146,8 +158,29 @@ mod test {
         assert_eq!(comando.comando, "avvia");
         assert_eq!(comando.esame, "storia romana");
 
-        consuma(&cartella.to_string_lossy());
+        consuma(&cartella.to_string_lossy(), "abc");
         assert!(leggi(&cartella.to_string_lossy()).is_none());
+    }
+
+    /// Un comando nuovo non deve sparire quando si consuma quello vecchio.
+    #[test]
+    fn consumare_un_comando_non_cancella_il_successivo() {
+        let cartella = std::env::temp_dir().join("focusanchor_comando_test_due");
+        let _ = fs::create_dir_all(&cartella);
+        let db = cartella.join("zotero.sqlite");
+        fs::write(&db, b"").unwrap();
+
+        let percorso = percorso_comando(&cartella.to_string_lossy()).expect("percorso");
+        fs::write(
+            &percorso,
+            r#"{"id":"nuovo","comando":"pausa","esame":""}"#,
+        )
+        .unwrap();
+
+        consuma(&cartella.to_string_lossy(), "vecchio");
+
+        let comando = leggi(&cartella.to_string_lossy()).expect("comando nuovo intatto");
+        assert_eq!(comando.id, "nuovo");
     }
 
     #[test]

@@ -84,11 +84,18 @@ impl StatoApp {
     pub fn campiona_tempo(&mut self) {
         let adesso = Instant::now();
         let passato = adesso.saturating_duration_since(self.ultimo_campione);
-        self.ultimo_campione = adesso;
 
-        if self.sessione.is_none() || self.pausa_residua().is_some() || passato < INTERVALLO {
+        if self.sessione.is_none() || self.pausa_residua().is_some() {
+            self.ultimo_campione = adesso;
             return;
         }
+        // L'orologio si azzera solo quando un campione viene registrato.
+        // Azzerarlo a ogni frame buttava via il tempo trascorso, e il
+        // campione non arrivava mai: la guardia scattava a ogni frame.
+        if passato < INTERVALLO {
+            return;
+        }
+        self.ultimo_campione = adesso;
         let finestra = crate::finestre::titolo_in_primo_piano();
         // L'estensione sa la chiave esatta del documento, ma va interrogata
         // solo quando Zotero ha il fuoco: il suo lettore resta "corrente"
@@ -181,5 +188,28 @@ mod test {
         assert!(e_riassunto("Appunti moduli A e B"));
         assert!(e_riassunto(CHIAVE_RIASSUNTI));
         assert!(!e_riassunto("Manuale di storia romana"));
+    }
+
+    /// L'orologio del campionamento non si azzera a ogni frame.
+    ///
+    /// Il difetto era qui: azzerandolo ogni volta, il tempo trascorso non
+    /// arrivava mai a un secondo e il tempo per documento restava vuoto.
+    #[test]
+    fn il_campionamento_accumula_il_tempo_invece_di_azzera() {
+        let (mittente, _ricevitore) = std::sync::mpsc::channel();
+        let mut stato = crate::state::StatoApp::nuovo();
+        stato.avvia_sessione(&mittente);
+
+        // Mezzo secondo fa: non e' ancora un campione, e l'orologio deve
+        // restare dove era, non ripartire da adesso.
+        stato.ultimo_campione = Instant::now() - Duration::from_millis(500);
+        let prima = stato.ultimo_campione;
+        stato.campiona_tempo();
+        assert_eq!(stato.ultimo_campione, prima);
+
+        // Passato un secondo il campione parte e l'orologio riparte.
+        stato.ultimo_campione = Instant::now() - Duration::from_secs(2);
+        stato.campiona_tempo();
+        assert!(stato.ultimo_campione.elapsed() < Duration::from_secs(1));
     }
 }

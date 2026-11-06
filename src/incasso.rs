@@ -15,8 +15,9 @@ use std::cell::RefCell;
 
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, TRUE};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetParent, GetWindowLongW, GetWindowTextW, IsWindowVisible, MoveWindow, SetParent,
-    SetWindowLongW, ShowWindow, GWL_STYLE, SW_SHOW, SW_SHOWNORMAL, WS_CHILD, WS_POPUP,
+    EnumWindows, GetParent, GetWindowLongW, GetWindowTextW, GetWindowThreadProcessId,
+    IsWindowVisible, MoveWindow, SetParent, SetWindowLongW, ShowWindow, GWL_STYLE, SW_SHOW,
+    SW_SHOWNORMAL, WS_CHILD, WS_POPUP,
 };
 
 /// Titolo massimo letto da una finestra.
@@ -28,6 +29,9 @@ thread_local! {
     /// Il callback di `EnumWindows` non riceve argomenti liberi: il
     /// frammento passa da qui.
     static FRAMMENTO: RefCell<String> = const { RefCell::new(String::new()) };
+
+    /// Identificativo del processo cercato dall'enumerazione in corso.
+    static PROCESSO: RefCell<u32> = const { RefCell::new(0) };
 }
 
 /// Cerca una finestra visibile il cui titolo contiene il frammento.
@@ -63,9 +67,40 @@ unsafe extern "system" fn cerca_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
     TRUE
 }
 
+/// Cerca la finestra visibile di un processo.
+fn cerca_per_processo(processo: u32) -> Option<HWND> {
+    PROCESSO.with(|p| *p.borrow_mut() = processo);
+    let mut trovata: Option<HWND> = None;
+    unsafe {
+        let _ = EnumWindows(
+            Some(cerca_processo_callback),
+            LPARAM(&mut trovata as *mut Option<HWND> as isize),
+        );
+    }
+    trovata
+}
+
+/// Callback di enumerazione: si ferma alla prima finestra del processo.
+unsafe extern "system" fn cerca_processo_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    if !IsWindowVisible(hwnd).as_bool() {
+        return TRUE;
+    }
+    let mut di: u32 = 0;
+    let _ = GetWindowThreadProcessId(hwnd, Some(&mut di));
+    if PROCESSO.with(|p| *p.borrow() == di) {
+        let trovata = &mut *(lparam.0 as *mut Option<HWND>);
+        *trovata = Some(hwnd);
+        return BOOL(0); // ferma l'enumerazione
+    }
+    TRUE
+}
+
 /// La finestra principale di FocusAnchor.
+///
+/// Si cerca per processo, non per titolo: una finestra che ha "focusanchor"
+/// nel titolo non deve diventare il padre di Zotero.
 pub fn finestra_app() -> Option<HWND> {
-    cerca("focusanchor")
+    cerca_per_processo(std::process::id())
 }
 
 /// La finestra principale di Zotero.
