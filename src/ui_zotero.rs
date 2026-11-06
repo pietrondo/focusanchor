@@ -204,6 +204,11 @@ fn aggancia_zotero(stato: &mut StatoApp) {
         stato.aggiungi_notifica("Zotero si sta avviando: l'aggancio avviene da solo.");
         return;
     };
+    // Un tentativo automatico ancora in attesa non ha piu' senso: dopo
+    // l'aggancio la finestra diventa figlia della nostra e non e' piu'
+    // fra le finestre di primo livello, quindi l'attesa fallirebbe e
+    // mostrerebbe «Zotero non compare» mentre Zotero e' qui dentro.
+    stato.attesa_zotero = None;
     aggancia_ora(stato, finestra);
 }
 

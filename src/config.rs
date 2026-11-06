@@ -171,26 +171,41 @@ pub fn cartella_dati() -> PathBuf {
     // Nei test i dati vanno in una cartella temporanea: la suite scrive
     // config e storico, e non deve toccare quelli veri dell'utente.
     #[cfg(test)]
-    {
+    let cartella = {
         use std::sync::Once;
         static PULIZIA: Once = Once::new();
-        let cartella = std::env::temp_dir().join(format!(
-            "focusanchor-test-{}",
-            std::process::id()
-        ));
-        // Al primo uso si riparte da zero: le prove non devono vedersi
-        // i file lasciati da un'esecuzione precedente.
+        let base = std::env::temp_dir();
+        let cartella = base.join(format!("focusanchor-test-{}", std::process::id()));
+        // Al primo uso si riparte da zero e si tolgono le cartelle delle
+        // esecuzioni finite: ferme da piu' di un'ora vuol dire morte.
         PULIZIA.call_once(|| {
             let _ = fs::remove_dir_all(&cartella);
+            if let Ok(voci) = fs::read_dir(&base) {
+                for voce in voci.flatten() {
+                    let nome = voce.file_name().to_string_lossy().into_owned();
+                    if !nome.starts_with("focusanchor-test-") || voce.path() == cartella {
+                        continue;
+                    }
+                    let ferma = voce
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .map(|t| t.elapsed().map(|e| e.as_secs() > 3600).unwrap_or(false))
+                        .unwrap_or(false);
+                    if ferma {
+                        let _ = fs::remove_dir_all(voce.path());
+                    }
+                }
+            }
         });
         let _ = fs::create_dir_all(&cartella);
-        return cartella;
-    }
+        cartella
+    };
     #[cfg(not(test))]
-    std::env::var_os("LOCALAPPDATA")
+    let cartella = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .map(|base| base.join("FocusAnchor"))
-        .unwrap_or_else(cartella_programma)
+        .unwrap_or_else(cartella_programma);
+    cartella
 }
 
 /// File che le versioni vecchie scrivevano accanto all'eseguibile.

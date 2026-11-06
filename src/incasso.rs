@@ -55,43 +55,39 @@ unsafe extern "system" fn cerca_processo_callback(hwnd: HWND, lparam: LPARAM) ->
     TRUE
 }
 
-/// Il processo di Zotero, se e' aperto.
+/// I processi con quel nome di eseguibile.
 ///
-/// Il nome dell'eseguibile e' l'unico modo sicuro: una finestra qualsiasi
-/// che finisce con " - zotero" nel titolo non e' Zotero, e agganciarla
-/// dentro la nostra finestra la farebbe sparire dallo schermo.
-pub fn processo_zotero() -> Option<u32> {
-    processo_per_nome("zotero.exe")
-}
-
-/// Il processo con quel nome di eseguibile, se e' aperto.
-fn processo_per_nome(nome_cercato: &str) -> Option<u32> {
+/// Il nome dell'eseguibile e' l'unico modo sicuro per trovare Zotero: una
+/// finestra qualsiasi che finisce con " - zotero" nel titolo non e' Zotero,
+/// e agganciarla dentro la nostra finestra la farebbe sparire dallo schermo.
+fn processi_per_nome(nome_cercato: &str) -> Vec<u32> {
     unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return Vec::new();
+        };
         let mut voce = PROCESSENTRY32W {
             dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
             ..Default::default()
         };
+        let mut trovati = Vec::new();
         // L'handle va chiuso DOPO l'enumerazione: su un handle gia' chiuso
         // `Process32FirstW` fallisce e non si trova nessun processo.
-        let trovato = if Process32FirstW(snapshot, &mut voce).is_err() {
-            None
-        } else {
+        if Process32FirstW(snapshot, &mut voce).is_ok() {
             loop {
                 let nome = String::from_utf16_lossy(&voce.szExeFile);
                 if nome
                     .trim_end_matches('\0')
                     .eq_ignore_ascii_case(nome_cercato)
                 {
-                    break Some(voce.th32ProcessID);
+                    trovati.push(voce.th32ProcessID);
                 }
                 if Process32NextW(snapshot, &mut voce).is_err() {
-                    break None;
+                    break;
                 }
             }
-        };
+        }
         let _ = CloseHandle(snapshot);
-        trovato
+        trovati
     }
 }
 
@@ -104,8 +100,13 @@ pub fn finestra_app() -> Option<HWND> {
 }
 
 /// La finestra principale di Zotero.
+///
+/// Zotero apre piu' processi con lo stesso nome: si guarda ognuno finche'
+/// non se ne trova uno con una finestra visibile.
 pub fn finestra_zotero() -> Option<HWND> {
-    cerca_per_processo(processo_zotero()?)
+    processi_per_nome("zotero.exe")
+        .into_iter()
+        .find_map(cerca_per_processo)
 }
 
 /// Aggancia una finestra dentro la nostra, alla posizione indicata.
@@ -171,7 +172,7 @@ pub fn avvia_zotero() -> Result<(), String> {
 
 #[cfg(test)]
 mod test {
-    use super::processo_per_nome;
+    use super::processi_per_nome;
 
     /// L'enumerazione dei processi deve trovare il processo del test
     /// stesso: chiudere l'handle prima di `Process32FirstW` la faceva
@@ -185,6 +186,8 @@ mod test {
             .to_string_lossy()
             .into_owned();
 
-        assert_eq!(processo_per_nome(&nome), Some(std::process::id()));
+        // `contains` e non `==` col primo trovato: due esecuzioni della
+        // suite possono avere in corso lo stesso eseguibile.
+        assert!(processi_per_nome(&nome).contains(&std::process::id()));
     }
 }
