@@ -18,8 +18,9 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetParent, GetWindowLongW, GetWindowThreadProcessId, IsWindowVisible, MoveWindow,
-    SetParent, SetWindowLongW, ShowWindow, GWL_STYLE, SW_SHOW, SW_SHOWNORMAL, WS_CHILD, WS_POPUP,
+    EnumWindows, GetParent, GetWindowLongW, GetWindowTextLengthW, GetWindowThreadProcessId,
+    IsWindowVisible, MoveWindow, SetParent, SetWindowLongW, ShowWindow, GWL_STYLE, SW_SHOW,
+    SW_SHOWNORMAL, WS_CHILD, WS_POPUP,
 };
 
 thread_local! {
@@ -43,6 +44,12 @@ fn cerca_per_processo(processo: u32) -> Option<HWND> {
 /// Callback di enumerazione: si ferma alla prima finestra del processo.
 unsafe extern "system" fn cerca_processo_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
     if !IsWindowVisible(hwnd).as_bool() {
+        return TRUE;
+    }
+    // Le finestre di servizio (bersaglio degli eventi di winit, IME) sono
+    // visibili ma senza titolo: se diventano loro il genitore, la pagina
+    // finisce fuori dallo schermo.
+    if GetWindowTextLengthW(hwnd) == 0 {
         return TRUE;
     }
     let mut di: u32 = 0;
