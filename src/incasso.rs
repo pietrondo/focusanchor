@@ -13,58 +13,18 @@
 
 use std::cell::RefCell;
 
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, TRUE};
+use windows::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM, TRUE};
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetParent, GetWindowLongW, GetWindowTextW, GetWindowThreadProcessId,
-    IsWindowVisible, MoveWindow, SetParent, SetWindowLongW, ShowWindow, GWL_STYLE, SW_SHOW,
-    SW_SHOWNORMAL, WS_CHILD, WS_POPUP,
+    EnumWindows, GetParent, GetWindowLongW, GetWindowThreadProcessId, IsWindowVisible, MoveWindow,
+    SetParent, SetWindowLongW, ShowWindow, GWL_STYLE, SW_SHOW, SW_SHOWNORMAL, WS_CHILD, WS_POPUP,
 };
 
-/// Titolo massimo letto da una finestra.
-const MAX_TITOLO: usize = 512;
-
 thread_local! {
-    /// Frammento di titolo cercato dall'enumerazione in corso.
-    ///
-    /// Il callback di `EnumWindows` non riceve argomenti liberi: il
-    /// frammento passa da qui.
-    static FRAMMENTO: RefCell<String> = const { RefCell::new(String::new()) };
-
     /// Identificativo del processo cercato dall'enumerazione in corso.
     static PROCESSO: RefCell<u32> = const { RefCell::new(0) };
-}
-
-/// Cerca una finestra visibile il cui titolo contiene il frammento.
-pub fn cerca(frammento: &str) -> Option<HWND> {
-    FRAMMENTO.with(|f| *f.borrow_mut() = frammento.to_lowercase());
-    let mut trovata: Option<HWND> = None;
-    unsafe {
-        let _ = EnumWindows(
-            Some(cerca_callback),
-            LPARAM(&mut trovata as *mut Option<HWND> as isize),
-        );
-    }
-    trovata
-}
-
-/// Callback di enumerazione: si ferma alla prima finestra che combacia.
-unsafe extern "system" fn cerca_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    if !IsWindowVisible(hwnd).as_bool() {
-        return TRUE;
-    }
-    let mut buffer = [0u16; MAX_TITOLO];
-    let lunghezza = GetWindowTextW(hwnd, &mut buffer);
-    if lunghezza <= 0 {
-        return TRUE;
-    }
-    let titolo = String::from_utf16_lossy(&buffer[..lunghezza as usize]).to_lowercase();
-    let combacia = FRAMMENTO.with(|f| titolo.contains(&*f.borrow()));
-    if combacia {
-        let trovata = &mut *(lparam.0 as *mut Option<HWND>);
-        *trovata = Some(hwnd);
-        return BOOL(0); // ferma l'enumerazione
-    }
-    TRUE
 }
 
 /// Cerca la finestra visibile di un processo.
@@ -95,6 +55,34 @@ unsafe extern "system" fn cerca_processo_callback(hwnd: HWND, lparam: LPARAM) ->
     TRUE
 }
 
+/// Il processo di Zotero, se e' aperto.
+///
+/// Il nome dell'eseguibile e' l'unico modo sicuro: una finestra qualsiasi
+/// che finisce con " - zotero" nel titolo non e' Zotero, e agganciarla
+/// dentro la nostra finestra la farebbe sparire dallo schermo.
+pub fn processo_zotero() -> Option<u32> {
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let _ = CloseHandle(snapshot);
+        let mut voce = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        if Process32FirstW(snapshot, &mut voce).is_err() {
+            return None;
+        }
+        loop {
+            let nome = String::from_utf16_lossy(&voce.szExeFile);
+            if nome.trim_end_matches('\0').eq_ignore_ascii_case("zotero.exe") {
+                return Some(voce.th32ProcessID);
+            }
+            if Process32NextW(snapshot, &mut voce).is_err() {
+                return None;
+            }
+        }
+    }
+}
+
 /// La finestra principale di FocusAnchor.
 ///
 /// Si cerca per processo, non per titolo: una finestra che ha "focusanchor"
@@ -105,7 +93,7 @@ pub fn finestra_app() -> Option<HWND> {
 
 /// La finestra principale di Zotero.
 pub fn finestra_zotero() -> Option<HWND> {
-    cerca(" - zotero")
+    cerca_per_processo(processo_zotero()?)
 }
 
 /// Aggancia una finestra dentro la nostra, alla posizione indicata.

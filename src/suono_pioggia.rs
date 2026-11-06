@@ -45,7 +45,7 @@ impl Iterator for Pioggia {
     type Item = f32;
 
     fn next(&mut self) -> Option<f32> {
-        let bianco: f32 = self.rng.gen_range(-1.0..1.0);
+        let bianco: f32 = self.rng.gen::<f32>() * 2.0 - 1.0;
         // Passa-basso debole: a differenza del rumore marrone non integra,
         // quindi resta il fruscio invece del rombo.
         self.filtro += 0.45 * (bianco - self.filtro);
@@ -53,19 +53,19 @@ impl Iterator for Pioggia {
 
         // Gocce: rumore breve che decade in fretta, come un colpo d'acqua.
         if self.rng.gen_bool(0.0005) {
-            self.goccia = self.rng.gen_range(0.3..0.9);
+            self.goccia = self.rng.gen::<f32>() * 0.6 + 0.3;
         }
         let goccia = if self.goccia > 0.0005 {
-            let colpo = self.rng.gen_range(-1.0..1.0) * self.goccia;
+            let colpo = self.rng.gen::<f32>() * 2.0 - 1.0;
             self.goccia *= 0.9990;
-            colpo * 0.35
+            colpo * self.goccia * 0.35
         } else {
             self.goccia = 0.0;
             0.0
         };
 
         // Raffiche lente: senza, la pioggia sembra un fruscio elettronico.
-        self.raffica += 0.00002 * (self.rng.gen_range(-1.0..1.0) - self.raffica);
+        self.raffica += 0.00002 * (self.rng.gen::<f32>() * 2.0 - 1.0 - self.raffica);
         let volume = (0.85 + self.raffica * 2.5).clamp(0.6, 1.1);
         Some((fruscio + goccia) * volume)
     }

@@ -28,15 +28,16 @@ pub fn sezione_appelli(ui: &mut egui::Ui, stato: &mut StatoApp) {
         return;
     }
 
-    // I secondi per documento sono gia' calcolati: rifarli a ogni frame
-    // clona il titolo di ogni documento di ogni sessione.
+    // I secondi per documento e i ritmi sono gia' calcolati: rifarli a
+    // ogni frame clona il titolo di ogni documento e parsa ogni data.
     let secondi = &stato.secondi_documenti;
+    let ritmi = &stato.ritmi;
     let calcolati: Vec<(Piano, u32)> = elenco
         .iter()
         .map(|appello| {
             (
                 appelli::piano(&appello.nome, secondi, &stato.collezioni, appello.giorni),
-                appelli::ritmo_esame(&stato.storico, &appello.nome),
+                ritmi.get(&appello.nome).copied().unwrap_or(0),
             )
         })
         .collect();
@@ -81,6 +82,16 @@ fn riga_appello(
         }
         if appello.crediti > 0 {
             badge(ui, &format!("{} CF", appello.crediti), TENUE);
+        }
+        // La scheda dell'esame: modalita' e frequentazione, che altrimenti
+        // restano scritte ma non si vedono mai.
+        if let Some(info) = stato.config.esami.get(&appello.nome) {
+            if !info.modalita.trim().is_empty() {
+                badge(ui, info.modalita.trim(), TENUE);
+            }
+            if info.non_frequentante {
+                badge(ui, "non frequentante", TENUE);
+            }
         }
     });
 

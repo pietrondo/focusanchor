@@ -109,7 +109,7 @@ fn piano_di_studio(ui: &mut egui::Ui, stato: &StatoApp) {
     let Some(target) = stato.piano_minuti_al_giorno else {
         return;
     };
-    let ritmo = stato.piano_ritmo;
+    let ritmo = stato.ritmo(&esame);
     let (testo, colore) = if ritmo >= target {
         (
             format!("Ritmo ok: {ritmo} min/giorno (ne servono {target})."),

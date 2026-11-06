@@ -155,8 +155,8 @@ pub struct StatoApp {
     /// Si calcolano quando lo storico cambia, non a ogni frame: rifarli
     /// clona il titolo di ogni documento di ogni sessione.
     pub secondi_documenti: std::collections::BTreeMap<String, std::collections::BTreeMap<String, u32>>,
-    /// Ritmo recente dell'esame in studio, in minuti al giorno.
-    pub piano_ritmo: u32,
+    /// Ritmo recente di ogni esame, in minuti al giorno.
+    pub ritmi: std::collections::BTreeMap<String, u32>,
     /// Minuti al giorno che servono per arrivare all'appello.
     pub piano_minuti_al_giorno: Option<u32>,
 }
@@ -222,7 +222,7 @@ impl StatoApp {
             date_in_edizione: std::collections::BTreeMap::new(),
             testo_parole,
             secondi_documenti,
-            piano_ritmo: 0,
+            ritmi: std::collections::BTreeMap::new(),
             piano_minuti_al_giorno: None,
         }
     }
@@ -351,13 +351,13 @@ impl StatoApp {
         self.config.xp_distrazioni = self.xp.distrazioni;
     }
 
-    /// Ricalcola il piano di studio e il ritmo dell'esame corrente.
+    /// Ricalcola il piano di studio e i ritmi degli esami.
     ///
     /// Va fatto quando lo storico o l'esame cambiano, non a ogni frame:
     /// il calcolo clona il titolo di ogni documento e parsa ogni data.
     pub fn ricalcola_piano(&mut self) {
+        self.ritmi = crate::appelli::ritmi(&self.storico);
         let esame = self.nome_esame();
-        let ritmo = crate::appelli::ritmo_esame(&self.storico, &esame);
         let giorni = crate::appelli::conto_di(&self.config, &esame).map(|(giorni, _)| giorni);
         let piano = crate::appelli::piano(
             &esame,
@@ -365,8 +365,12 @@ impl StatoApp {
             &self.collezioni,
             giorni,
         );
-        self.piano_ritmo = ritmo;
         self.piano_minuti_al_giorno = piano.minuti_al_giorno;
+    }
+
+    /// Ritmo dell'esame, in minuti al giorno.
+    pub fn ritmo(&self, esame: &str) -> u32 {
+        self.ritmi.get(esame).copied().unwrap_or(0)
     }
 
     /// Aggiunge XP e li salva subito, cosi' un crash non li perde.

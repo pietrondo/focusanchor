@@ -185,6 +185,14 @@ const FILE_PROPRI: &[&str] = &[
 /// Prefissi dei file per esame: carte di ripasso, carte Anki, schede NotebookLM.
 const PREFISSI_PROPRI: &[&str] = &["esame_", "anki_", "notebooklm_"];
 
+/// Vero se il file e' uno di quelli che l'app salva.
+///
+/// Gli altri file della cartella (snapshot del database, profilo del
+/// browser, temporanei) non sono dati dell'utente.
+pub fn e_dato_dell_app(nome: &str) -> bool {
+    FILE_PROPRI.contains(&nome) || PREFISSI_PROPRI.iter().any(|p| nome.starts_with(p))
+}
+
 /// Porta nella cartella dati i file delle versioni vecchie.
 ///
 /// Va fatto una volta sola: senza, chi ha gia' studiato si ritroverebbe
@@ -203,9 +211,7 @@ pub fn migra_dati_vecchi() {
     }
     for voce in voci.flatten() {
         let nome = voce.file_name().to_string_lossy().into_owned();
-        let nostro = FILE_PROPRI.contains(&nome.as_str())
-            || PREFISSI_PROPRI.iter().any(|p| nome.starts_with(p));
-        if !nostro || !voce.file_type().map(|t| t.is_file()).unwrap_or(false) {
+        if !e_dato_dell_app(&nome) || !voce.file_type().map(|t| t.is_file()).unwrap_or(false) {
             continue;
         }
         let destinazione = nuova.join(&nome);

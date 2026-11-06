@@ -246,6 +246,55 @@ pub fn genera_pacchetto_notebooklm(
         .map_err(|e| format!("Non riesco a scrivere il pacchetto: {e}"))
 }
 
+/// Esporta i dati dello studio in una cartella che l'utente vede.
+///
+/// I dati vivono in `%LOCALAPPDATA%`: se Windows viene reinstallata,
+/// spariscono. Qui vengono copiati in una cartella sulla scrivania (o nei
+/// documenti), cosi' l'utente li mette dove gli servono.
+pub fn esporta_dati() -> Result<PathBuf, String> {
+    let origine = cartella_dati();
+    let cartella = cartella_esportazione().join(format!("focusanchor-{}", crate::carte::oggi()));
+    fs::create_dir_all(&cartella).map_err(|e| format!("Non riesco a creare il backup: {e}"))?;
+    let voci = fs::read_dir(&origine).map_err(|e| format!("Non riesco a leggere i dati: {e}"))?;
+    let mut copiati = 0;
+    for voce in voci.flatten() {
+        let nome = voce.file_name().to_string_lossy().into_owned();
+        if !crate::config::e_dato_dell_app(&nome) {
+            continue;
+        }
+        if !voce.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        if fs::copy(voce.path(), cartella.join(&nome)).is_ok() {
+            copiati += 1;
+        }
+    }
+    if copiati == 0 {
+        let _ = fs::remove_dir_all(&cartella);
+        return Err("Non c'e' niente da esportare.".into());
+    }
+    Ok(cartella)
+}
+
+/// La cartella dove mettere l'esportazione.
+///
+/// Prima la scrivania (anche quella di OneDrive), poi i documenti: sono
+/// le due cartelle che l'utente vede, e spesso sono gia' nel cloud.
+fn cartella_esportazione() -> PathBuf {
+    let mut candidati: Vec<PathBuf> = Vec::new();
+    if let Some(one_drive) = std::env::var_os("OneDrive") {
+        candidati.push(PathBuf::from(one_drive).join("Desktop"));
+    }
+    if let Some(casa) = std::env::var_os("USERPROFILE").map(PathBuf::from) {
+        candidati.push(casa.join("Desktop"));
+        candidati.push(casa.join("Documents"));
+    }
+    candidati
+        .into_iter()
+        .find(|cartella| cartella.is_dir())
+        .unwrap_or_else(cartella_dati)
+}
+
 /// Legge il pacchetto NotebookLM preservando gli errori del file system.
 pub fn leggi_notebooklm_esame_result(esame: &str) -> Result<String, String> {
     fs::read_to_string(percorso_notebooklm_esame(esame))

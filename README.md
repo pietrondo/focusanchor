@@ -291,6 +291,19 @@ portati li' automaticamente.
 Il file `pioggia.mp3` si cerca prima accanto all'eseguibile e poi nella
 cartella dei dati.
 
+## Backup dei dati
+
+I tuoi dati sono in `%LOCALAPPDATA%\FocusAnchor`: se reinstalli Windows,
+spariscono. Il bottone **💾 Esporta** (nel riquadro *I tuoi file*) ne fa
+una copia in una cartella sulla scrivania o nei documenti, e te la apre
+nella cartella: da li' la sposti dove vuoi, magari in una cartella già
+sincronizzata con il cloud.
+
+Per ripristinare basta il contrario: copia i file dell'esportazione
+indietro in `%LOCALAPPDATA%\FocusAnchor` e riavvia l'app. Il backup
+ contiene gli stessi file che l'app usa (`config.json`, `storico.json`,
+`esame_*.json`), quindi niente va riconvertito.
+
 ## Privacy
 
 Tutto resta sul tuo computer. L'unica cosa che esce è ciò che decidi tu di

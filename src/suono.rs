@@ -53,7 +53,9 @@ impl Iterator for RumoreMarrone {
 
     fn next(&mut self) -> Option<f32> {
         // Rumore bianco uniforme in [-1, 1].
-        let bianco: f32 = self.rng.gen_range(-1.0..1.0);
+        // `gen` e' piu' veloce di `gen_range` e serve a ogni campione:
+        // 44100 volte al secondo.
+        let bianco: f32 = self.rng.gen::<f32>() * 2.0 - 1.0;
         // Integratore leaky: attenua le frequenze alte, esalta le basse.
         self.ultimo = (self.ultimo + 0.02 * bianco) / 1.02;
         // Normalizzazione per compensare l'attenuazione del filtro.

@@ -10,6 +10,19 @@ use crate::config::Configurazione;
 use crate::storico::{self, SessioneRegistrata};
 use crate::zotero::Collezione;
 
+/// True se la data della sessione cade nel periodo indicato.
+///
+/// Il confronto e' fra stringhe: la data e' gia' in formato ISO e le
+/// finestre sono poche, quindi non serve parsare ogni data.
+fn entra_nel_periodo(data: &str, oggi: chrono::NaiveDate, giorni: i64) -> bool {
+    let Ok(giorno) = chrono::NaiveDate::parse_from_str(data.get(0..10).unwrap_or(""), "%Y-%m-%d")
+    else {
+        return false;
+    };
+    let distanza = (oggi - giorno).num_days();
+    (0..=giorni).contains(&distanza)
+}
+
 /// Un esame in vista: quando scade e quanto ci hai gia' studiato.
 #[derive(Clone, Debug)]
 pub struct Appello {
@@ -136,35 +149,24 @@ pub fn testo_conto(giorni: i64, esami: &[String]) -> String {
     }
 }
 
-/// Minuti studiati su un esame negli ultimi `giorni` giorni.
+/// I ritmi di tutti gli esami, in minuti al giorno.
 ///
-/// Il ritmo di un esame e' diverso da quello globale: una settimana di
-/// Storia Romana non dice niente su Letteratura.
-pub fn minuti_recenti(
-    storico: &[SessioneRegistrata],
-    esame: &str,
-    giorni: i64,
-) -> u32 {
+/// Si calcolano quando lo storico cambia: rifarli a ogni frame parsa una
+/// data per ogni sessione, e il pannello degli appelli li vuole per ogni
+/// esame.
+pub fn ritmi(storico: &[SessioneRegistrata]) -> BTreeMap<String, u32> {
     let oggi = chrono::Local::now().date_naive();
-    storico
-        .iter()
-        .filter(|s| s.esame == esame)
-        .filter(|s| {
-            let Ok(giorno) =
-                chrono::NaiveDate::parse_from_str(s.data.get(0..10).unwrap_or(""), "%Y-%m-%d")
-            else {
-                return false;
-            };
-            let distanza = (oggi - giorno).num_days();
-            (0..=giorni).contains(&distanza)
-        })
-        .map(|s| s.minuti)
-        .sum()
-}
-
-/// Ritmo giornaliero di un esame: minuti al giorno negli ultimi sette giorni.
-pub fn ritmo_esame(storico: &[SessioneRegistrata], esame: &str) -> u32 {
-    minuti_recenti(storico, esame, 7) / 7
+    let mut minuti: BTreeMap<String, u32> = BTreeMap::new();
+    for s in storico {
+        if !entra_nel_periodo(&s.data, oggi, 7) {
+            continue;
+        }
+        *minuti.entry(s.esame.clone()).or_insert(0) += s.minuti;
+    }
+    minuti
+        .into_iter()
+        .map(|(esame, minuti)| (esame, minuti / 7))
+        .collect()
 }
 
 /// Secondi passati su ogni documento, raggruppati per esame.
@@ -346,8 +348,9 @@ mod test {
         let storico = vec![sessione];
 
         // Il ritmo e' quello di questo esame, non quello globale.
-        assert_eq!(ritmo_esame(&storico, "Storia romana"), 10);
-        assert_eq!(ritmo_esame(&storico, "Altro esame"), 0);
+        let ritmi = ritmi(&storico);
+        assert_eq!(ritmi.get("Storia romana").copied().unwrap_or(0), 10);
+        assert_eq!(ritmi.get("Altro esame").copied().unwrap_or(0), 0);
 
         let secondi = secondi_per_documento(&storico);
         let collezioni = vec![collezione("Storia romana", 4)];

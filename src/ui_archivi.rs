@@ -18,6 +18,19 @@ pub fn sezione_archivi(ui: &mut egui::Ui, stato: &mut StatoApp) {
                 Err(e) => segnala_errore_materiali(stato, &e),
             }
         }
+        if ui
+            .button("💾 Esporta")
+            .on_hover_text("Copia i tuoi dati fuori da FocusAnchor: cosi' non spariscono")
+            .clicked()
+        {
+            match archivi::esporta_dati() {
+                Ok(cartella) => {
+                    let _ = archivi::rivela_file(&cartella);
+                    stato.aggiungi_notifica(&format!("Dati esportati in {}", cartella.display()));
+                }
+                Err(e) => stato.avviso = Some(e),
+            }
+        }
     });
     ui.horizontal(|ui| {
         if ui.button("🗑️ Svuota pensieri").clicked() {
